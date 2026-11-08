@@ -1,0 +1,31 @@
+.filter-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eaf0f3;
+}
+.filter-tabs button {
+  padding: 7px 12px;
+  border-radius: 9px;
+  background: transparent;
+  color: #526b7b;
+  font-size: 11px;
+}
+.filter-tabs button.active {
+  background: #fff;
+  color: #12384e;
+  box-shadow: 0 1px 4px #173c5018;
+}
+@media (max-width: 580px) {
+  .filter-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .filter-tabs button {
+    width: 100%;
+  }
+}

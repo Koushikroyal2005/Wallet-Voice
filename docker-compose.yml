@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aiwallet
+      POSTGRES_USER: aiwallet
+      POSTGRES_PASSWORD: aiwallet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiwallet -d aiwallet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes: [postgres_data:/var/lib/postgresql/data]
+  api:
+    build: ./backend
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiwallet:aiwallet@db:5432/aiwallet
+      DEMO_MODE: "true"
+      DEMO_AUTH_MODE: "true"
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+  migrate:
+    build: ./backend
+    env_file: [.env]
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiwallet:aiwallet@db:5432/aiwallet
+    depends_on:
+      db: { condition: service_healthy }
+  worker:
+    build: ./backend
+    env_file: [.env]
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiwallet:aiwallet@db:5432/aiwallet
+      DEMO_MODE: "true"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+  web:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on:
+      api: { condition: service_started }
+volumes:
+  postgres_data:

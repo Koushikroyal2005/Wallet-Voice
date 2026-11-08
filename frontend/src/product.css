@@ -1,0 +1,239 @@
+.attention-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+  padding: 22px 24px;
+  border: 1px solid #f0c98b;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fff9ed, #fff);
+}
+.attention-card h2 {
+  margin: 5px 0 3px;
+  font-size: 22px;
+}
+.attention-card p {
+  margin: 0;
+  color: var(--muted);
+}
+.attention-card > div:last-child {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.3fr);
+  gap: 16px;
+  margin: 18px 0 26px;
+}
+.surface {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 24px rgba(20, 50, 70, 0.04);
+}
+.surface h2 {
+  margin: 5px 0 6px;
+  font-size: 21px;
+}
+.surface > p {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.surface label,
+.form-stack label {
+  display: grid;
+  gap: 7px;
+  color: #344d5d;
+  font-size: 12px;
+  font-weight: 700;
+}
+.surface input,
+.form-stack input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid #c7d3da;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+}
+.surface input:focus {
+  border-color: var(--green);
+  outline: 3px solid #dff4eb;
+}
+.form-stack {
+  display: grid;
+  gap: 13px;
+}
+.amount-input {
+  display: flex;
+  align-items: center;
+  margin: 8px 0 14px;
+  border: 1px solid #b9c9d2;
+  border-radius: 12px;
+}
+.amount-input span {
+  padding-left: 14px;
+  font-size: 22px;
+  font-weight: 700;
+}
+.amount-input input {
+  border: 0;
+  font-size: 26px;
+  font-weight: 800;
+  outline: 0;
+}
+.transfer-actions {
+  display: flex;
+  gap: 9px;
+  margin-bottom: 15px;
+}
+.transfer-actions button {
+  flex: 1;
+}
+.transfer-surface > small,
+.muted {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.activity-list,
+.draft-list,
+.mandate-list {
+  display: grid;
+  gap: 0;
+}
+.activity-row,
+.draft-row,
+.mandate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.activity-row:last-child,
+.draft-row:last-child,
+.mandate-row:last-child {
+  border-bottom: 0;
+}
+.activity-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #e8f5f0;
+  color: #177456;
+}
+.activity-row > div,
+.draft-row > div:first-child,
+.mandate-row > div {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+.activity-row small,
+.draft-row small,
+.mandate-row small,
+.draft-row span,
+.mandate-row span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.draft-row > div:last-child {
+  display: flex;
+  gap: 6px;
+}
+.draft-row button,
+.mandate-row button {
+  padding: 7px 10px;
+  font-size: 11px;
+}
+.permissions-grid {
+  margin-top: 0;
+}
+.conversation-timeline {
+  display: grid;
+  gap: 7px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 16px 20px 3px;
+  background: #fbfcfd;
+}
+.conversation-message {
+  max-width: 76%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: #edf3f6;
+}
+.conversation-message.user {
+  justify-self: end;
+  background: #dff3eb;
+}
+.conversation-message span {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.conversation-message p {
+  margin: 3px 0 0;
+  font-size: 12px;
+}
+.conversation-reset {
+  margin-left: 7px;
+}
+.pin-dialog .pin-input {
+  font-family: monospace;
+}
+@media (max-width: 900px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .attention-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .attention-card > div:last-child {
+    width: 100%;
+  }
+  .attention-card button {
+    flex: 1;
+  }
+}
+@media (max-width: 580px) {
+  .workspace-grid {
+    margin: 12px 0 20px;
+  }
+  .surface {
+    padding: 18px;
+  }
+  .attention-card {
+    padding: 18px;
+  }
+  .conversation-message {
+    max-width: 88%;
+  }
+  .sidebar nav {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  .draft-row,
+  .mandate-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .draft-row > div:last-child {
+    width: 100%;
+  }
+  .draft-row button {
+    flex: 1;
+  }
+}
