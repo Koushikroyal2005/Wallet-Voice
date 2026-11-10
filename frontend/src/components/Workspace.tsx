@@ -44,10 +44,7 @@ export function WalletView({
           <h2 className="large-amount">
             {balance ? money(balance.available_balance) : "—"}
           </h2>
-          <p>
-            Total {balance ? money(balance.posted_balance) : "—"} · Reserved for payments{" "}
-            {balance ? money(balance.reserved_amount) : "—"}
-          </p>
+          <p className="wallet-demo-label">Simulated wallet · INR</p>
         </div>
         <div className="button-row">
           <button
@@ -71,7 +68,11 @@ export function WalletView({
           </button>
         </div>
       </section>
-      <section className="surface" style={{ padding: 20, marginBottom: 24 }}>
+      <div className="wallet-metrics">
+        <section className="surface"><span className="eyebrow">POSTED BALANCE</span><strong>{balance ? money(balance.posted_balance) : '—'}</strong><p>Money recorded in your wallet.</p></section>
+        <section className="surface"><span className="eyebrow">RESERVED FOR PAYMENTS</span><strong>{balance ? money(balance.reserved_amount) : '—'}</strong><p>Set aside while payments finish.</p></section>
+      </div>
+      <section className="surface payment-method-card">
         <span className="eyebrow">PAYMENT METHODS</span>
         <h3>PayPal at checkout</h3>
         <p>Choose PayPal when reviewing a payment. Your personal account is selected during PayPal checkout.</p>
@@ -524,6 +525,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
         <button aria-pressed={section === "security"} onClick={() => setSection("security")}>Security</button>
       </div>
       {section === "autopay" && <>
+      <div className="permission-intro surface"><ShieldCheck size={24}/><div><strong>Your approval sets the boundaries.</strong><p>Business allowances cover specific checkouts. AutoPay uses your wallet rules. You can review or revoke an allowance below.</p></div><span className="badge">Demo wallet only</span></div>
       <div className="section-heading">
         <div>
           <h2>Faster checkout</h2>

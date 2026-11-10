@@ -77,3 +77,25 @@ def test_amount_followup_keeps_task(tool):
 
 def test_amount_without_task_does_not_guess():
     assert contextual_intent('1250 rupees',conversation()) is None
+
+
+@pytest.mark.parametrize('text,source', [('PayPal','PAYPAL_SANDBOX'),('use PayPal instead','PAYPAL_SANDBOX'),('my wallet','AI_WALLET')])
+def test_short_source_reply_prepares_selected_payment(text,source):
+    row=conversation()
+    result=contextual_intent(text,row)
+    assert result.tool=='prepare_manual_payment'
+    assert result.args=={'payment_id':'old','payment_source':source}
+
+
+def test_source_without_selection_asks():
+    row=conversation()
+    row.selected_payment_id=None
+    assert contextual_intent('PayPal',row).tool==''
+
+
+@pytest.mark.parametrize('text',['stop','no','not that one'])
+def test_correction_clears_selected_action(text):
+    row=conversation()
+    assert contextual_intent(text,row).tool==''
+    assert row.selected_payment_id is None
+    assert row.context=={}

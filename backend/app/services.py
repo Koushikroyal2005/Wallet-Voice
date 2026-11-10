@@ -60,6 +60,7 @@ def policy(db:Session,p:PaymentRequest,mode="auto",merchant_confirmed=False):
     if p.explicit_hold:return {"decision":"EXPLICIT_HOLD","reason_codes":["USER_HELD"],"urgency":"HELD"}
     s=settings_for(db);w=wallet(db);b=balances(db,w);remaining=(utc(p.expires_at)-datetime.now(timezone.utc)).total_seconds() if p.expires_at else None;urgency="FLEXIBLE" if remaining is None or remaining>10800 else "DUE_SOON" if remaining>=900 else "URGENT";codes=[];decision="ELIGIBLE"
     hard=[]
+    if p.currency!=w.currency:hard.append("CURRENCY_MISMATCH")
     if p.status=="SUCCEEDED":hard.append("ALREADY_PAID")
     elif p.status not in {"PENDING","HELD","FAILED"}:hard.append("NOT_PAYABLE")
     if p.expires_at and remaining<=0:hard.append("EXPIRED")

@@ -1,5 +1,9 @@
 # Testing
 
+## Guardian conversation evaluation
+
+See [VOICE_TESTING.md](VOICE_TESTING.md) for the 40-case deterministic/live model dataset, measured failures, microphone lifecycle browser fixtures, isolated PostgreSQL replay test and real-device voice checklist. Live Nemotron inference, context-only follow-ups, demo parsing and synthetic browser audio are reported separately.
+
 ## Plain-language refinement checkpoint
 
 Backend suite: **64 passed, 13 skipped**. Browser harness now uses Auto-pay & security, checks separation of PIN controls, and reviews the simplified checkout approval. Four viewports and existing financial fixture journeys passed. The assistant’s longer-pause option and physical microphone quality still require manual audio testing. Docker and live providers were not run.
@@ -109,3 +113,7 @@ On 2026-11-08, after the wallet/PIN, conversation, merchant-permission, and PayP
 - Live NVIDIA/PayPal checks: **not executed in this validation pass**; the earlier provider status above remains authoritative.
 
 After rebuilding, run the isolated PostgreSQL command at the top of this document. It must apply migration `20261108_product_hardening`, then return exit code 0 before the new database behavior is treated as PostgreSQL-verified. The normal development volume is not used by that command.
+
+## Payment Guardian verification
+
+See [PAYMENT_GUARDIAN.md](PAYMENT_GUARDIAN.md) for review behavior, changed files, actual test results and manual acceptance steps. Run the additional browser check from `frontend` with `node scripts/verify-guardian.mjs`.

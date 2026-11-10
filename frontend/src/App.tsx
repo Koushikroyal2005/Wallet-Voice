@@ -7,7 +7,6 @@ import {
   Check,
   ChevronRight,
   Clock3,
-  CreditCard,
   Home,
   Inbox,
   Plus,
@@ -16,13 +15,16 @@ import {
   Train,
   Wallet,
   Zap,
+  Mic,
+  MessageCircle,
 } from "lucide-react";
+import { WalletCompanion } from "./components/WalletCompanion";
 import { api, post, operationKey, finishOperation } from "./lib/api";
 import { money } from "./lib/formatting";
 import { Dialog } from "./components/Dialog";
 import { FloatingAssistant } from "./components/FloatingAssistant";
 import { WalletPinDialog } from "./components/WalletPinDialog";
-import { PayPalCheckoutPanel } from "./components/PayPalCheckoutPanel";
+import { PaymentGuardian } from "./components/PaymentGuardian";
 import {
   Drafts,
   Permissions,
@@ -171,12 +173,11 @@ export function App() {
 function WalletApp() {
   const query = useQueryClient();
   const [tab, setTab] = useState<Tab>("home");
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [tab]);
   const [assistant, setAssistant] = useState(false);
   const [filter, setFilter] = useState("Open");
   const [search, setSearch] = useState("");
   const [review, setReview] = useState<Payment>();
-  const [source, setSource] = useState("wallet");
-  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [failure, setFailure] = useState("");
@@ -213,8 +214,6 @@ function WalletApp() {
     );
   const reviewPayment = (payment: Payment) => {
     setReview(payment);
-    setSource("wallet");
-    setAccepted(false);
     setFailure("");
   };
   async function action(run: () => Promise<unknown>, message: string) {
@@ -252,7 +251,7 @@ function WalletApp() {
             <span className={p.trace?.urgency === "URGENT" ? "urgent" : ""}>
               {p.explicit_hold ? "On hold · waiting for you" : due(p)}
             </span>
-            <small>
+            <small className={`payment-status status-${p.status.toLowerCase()}`}>
               {p.status === "SUCCEEDED"
                 ? "Paid"
                 : p.status === "PROCESSING"
@@ -278,8 +277,8 @@ function WalletApp() {
     ) : (
       <div className="empty-state">
         <Check size={24} />
-        <h3>You're all caught up</h3>
-        <p>New payment requests will appear here.</p>
+        <h3>{search ? 'No matching payments' : filter === 'Held' ? 'Nothing on hold' : filter === 'History' ? 'No past payments yet' : "You're all caught up"}</h3>
+        <p>{search ? 'Try a business name or a word from the request.' : filter === 'Held' ? 'Requests you hold will wait here until you release them.' : 'New payment requests will appear here.'}</p>
       </div>
     );
   }
@@ -310,6 +309,7 @@ function WalletApp() {
           </span>
           <span>
             aiwallet<span className="brand-dot">.</span>
+            <small className="brand-subtitle">GUARDIAN</small>
           </span>
         </a>
         <span className="nav-caption">YOUR SPACE</span>
@@ -447,23 +447,17 @@ function WalletApp() {
                     <Sparkles size={13} /> YOUR PERSONAL PAYMENT ASSISTANT
                   </span>
                   <h2>
-                    What would you like to do?
+                    Your next payment.<br/>A little more clarity.
                   </h2>
-                  <p>“Which of my payments needs attention?”</p>
-                  <div className="sound-art" aria-hidden="true">
-                    {[18, 34, 54, 76, 42, 64, 88, 52, 30, 48, 20].map(
-                      (h, i) => (
-                        <i key={i} style={{ height: h }} />
-                      ),
-                    )}
-                  </div>
+                  <p>Tell your wallet what you need. Get the details, understand the checks, and approve when you’re ready.</p>
+                  <div className="hero-companion" aria-hidden="true"><WalletCompanion/><span>Here to help you decide.</span></div>
                 </div>
                 <div className="hero-actions">
-                  <button onClick={() => window.dispatchEvent(new CustomEvent("wallet-assistant-open", {detail: "voice"}))}>Talk to your wallet</button>
-                  <button className="secondary" onClick={() => setAssistant(true)}>Type instead</button>
-                  <p>Ask what’s due, find a payment, or prepare one for review.</p>
-                  <button className="text-button" onClick={() => setTab("payments")}>See payments to review ({pending.length}) →</button>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent("wallet-assistant-open", {detail: "voice"}))}><Mic size={20}/>Talk to your wallet</button>
+                  <button className="secondary" onClick={() => setAssistant(true)}><MessageCircle size={20}/>Type instead</button>
+                  <p><ShieldCheck size={15}/> Your voice prepares. You approve the payment.</p>
                 </div>
+                <div className="hero-urgent"><span className="round-icon"><Clock3 size={20}/></span><div><strong>{attention.filter(p => p.trace?.urgency === 'URGENT').length} urgent {attention.filter(p => p.trace?.urgency === 'URGENT').length === 1 ? 'request' : 'requests'}</strong><p>{attention.some(p => p.trace?.urgency === 'URGENT') ? 'A deadline is approaching. Take a look before you decide.' : 'No urgent requests right now. Review the rest at your pace.'}</p></div><button className="text-button" onClick={() => setTab('payments')}>View inbox <ArrowUpRight size={16}/></button></div>
               </section>
               <aside className="overview-column">
                 <section className="balance-card">
@@ -571,6 +565,7 @@ function WalletApp() {
                   <button
                     key={value}
                     className={filter === value ? "active" : ""}
+                    aria-pressed={filter === value}
                     onClick={() => setFilter(value)}
                   >
                     {value}
@@ -635,147 +630,11 @@ function WalletApp() {
       {review && (
         <Dialog
           title={review.merchant}
+          variant="drawer"
           busy={busy}
           onClose={() => setReview(undefined)}
         >
-          <p>{review.description}</p>
-          <div className="review-amount">{money(review.amount)}</div>
-          <dl className="review-details">
-            <div>
-              <dt>Deadline</dt>
-              <dd>{due(review)}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>
-                {review.explicit_hold
-                  ? "Held by you"
-                  : review.status.toLowerCase().replaceAll("_", " ")}
-              </dd>
-            </div>
-          </dl>
-          {failure && (
-            <p role="alert" className="error-banner">
-              {failure}
-            </p>
-          )}
-          {review.status === "PROCESSING" &&
-            review.payment_source === "PAYPAL_SANDBOX" && (
-              <PayPalCheckoutPanel
-                paymentId={review.id}
-                amount={review.amount}
-                onComplete={() => {
-                  refresh();
-                  setReview(undefined);
-                  setNotice("PayPal payment completed.");
-                }}
-              />
-            )}
-          {openPayment(review) &&
-            (review.explicit_hold ? (
-              <>
-                <p>This request stays on hold until you release it.</p>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    action(async () => {
-                      await post(`/api/payments/${review.id}/release`);
-                      setReview(undefined);
-                    }, "Payment released")
-                  }
-                >
-                  Release hold
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="source-options">
-                  <button
-                    className={source === "wallet" ? "selected" : "secondary"}
-                    onClick={() => setSource("wallet")}
-                  >
-                    <Wallet size={17} />
-                    Wallet
-                  </button>
-                  {review.category !== "person_to_person" && (
-                    <button
-                      className={source === "paypal" ? "selected" : "secondary"}
-                      onClick={() => setSource("paypal")}
-                    >
-                      <CreditCard size={17} />
-                      PayPal
-                    </button>
-                  )}
-                </div>
-                {!review.verified && (
-                  <label className="check-label">
-                    <input
-                      type="checkbox"
-                      checked={accepted}
-                      onChange={(e) => setAccepted(e.target.checked)}
-                    />
-                    I recognize this recipient and the amount.
-                  </label>
-                )}
-                {source === "paypal" ? (
-                  (review.verified || accepted) && (
-                    <PayPalCheckoutPanel
-                      paymentId={review.id}
-                      amount={review.amount}
-                      onComplete={() => {
-                        refresh();
-                        setNotice(
-                          "PayPal status updated. Your wallet funds were not used.",
-                        );
-                        setReview(undefined);
-                      }}
-                    />
-                  )
-                ) : (
-                  <div className="dialog-actions">
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() =>
-                        action(async () => {
-                          await post(`/api/payments/${review.id}/hold`);
-                          setReview(undefined);
-                        }, "Payment placed on hold")
-                      }
-                    >
-                      Hold for later
-                    </button>
-                    <button
-                      disabled={busy || (!review.verified && !accepted)}
-                      onClick={() =>
-                        action(async () => {
-                          const outcome = await post(
-                            `/api/payments/${review.id}/pay`,
-                            {
-                              idempotency_key: operationKey(
-                                `payment:${review.id}`,
-                              ),
-                              confirm_unknown_merchant: accepted,
-                            },
-                          );
-                          if (outcome.status === "FAILED") {
-                            finishOperation(`payment:${review.id}`);
-                            refresh();
-                            throw new Error(
-                              outcome.failure_reason ||
-                                "Payment failed. No funds were debited.",
-                            );
-                          }
-                          setReview(undefined);
-                        }, "Payment status updated")
-                      }
-                    >
-                      {busy ? "Processing…" : `Pay ${money(review.amount)}`}
-                    </button>
-                  </div>
-                )}
-              </>
-            ))}
+          <PaymentGuardian paymentId={review.id} initialSource={review.payment_source} onChanged={refresh} onCancel={() => setReview(undefined)} />
         </Dialog>
       )}
       {funding && (

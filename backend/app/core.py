@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     app_env: str = "development"
     demo_mode: bool = True
     demo_auth_mode: bool = True
@@ -57,6 +58,12 @@ class Settings(BaseSettings):
     voice_default_language: str = "en-US"
     voice_history_max_turns: int = 6
     voice_browser_tts_fallback: bool = True
+
+    @model_validator(mode='after')
+    def validate_login_setup(self):
+        if self.require_wallet_login and len(self.wallet_session_secret.strip()) < 32:
+            raise ValueError('Wallet sign-in requires WALLET_SESSION_SECRET with at least 32 random characters. Generate it locally and set it in your private .env before starting the application.')
+        return self
 
 @lru_cache
 def settings() -> Settings: return Settings()

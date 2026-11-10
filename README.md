@@ -8,10 +8,13 @@ AI Wallet is a local-first fintech hackathon prototype with an append-only journ
 
 ```bash
 cp .env.example .env
+# Before starting, set WALLET_SESSION_SECRET in your private .env (see below).
 docker compose up --build
 ```
 
-Open `http://localhost:8080`; API docs are at `http://localhost:8000/docs`. The demo starts without any third-party credentials. Add money, emit merchant requests, then enable AutoPay to try the policy-controlled batch flow.
+Fresh installs keep wallet sign-in enabled. Generate a session secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and paste it into `WALLET_SESSION_SECRET` in your private `.env`. Do not share or commit it. Startup rejects a missing/short secret. Set your demo wallet PIN before initializing a new database; changing the environment does not replace an existing stored PIN.
+
+Open `http://localhost:8080`; API docs are at `http://localhost:8000/docs`. The demo needs no third-party credentials. Add money, emit merchant requests, then enable AutoPay to try the policy-controlled batch flow.
 
 Before upgrading an existing volume, back it up with `docker compose exec db pg_dump -U aiwallet aiwallet > aiwallet-backup.sql`. Compose runs `alembic upgrade head` in the `migrate` service before API and worker startup. Legacy single-row ledger records are retained as `legacy_ledger_entries` and converted to balanced journal entries during the migration. If the legacy cached balance includes historical opening funds not represented by old rows, the migration creates one explicit `MIGRATION_OPENING_BALANCE` journal transaction to preserve the balance auditably.
 
