@@ -12,10 +12,10 @@ from .models import AppEvent,AutoPaySettings,AuthorizationChallenge,Conversation
 from .providers import DemoPaymentProvider
 from .services import FinancialError,balances,batch_preview,emit,finalize,policy,reserve,settings_for,topup_or_withdraw,transition,wallet
 from .voice import VoiceError,execute_tool,nemotron_intent,normalize_audio,nvidia_ready,synthesize,transcribe
-from .paypal import PayPalError,apply_webhook,browser_client_token,capture_order,configured,create_order,serialise,verify_webhook
+from .paypal import PayPalError,apply_webhook,browser_client_token,capture_order,configured,create_order,refresh_order,serialise,verify_webhook
 from .models import PayPalOrder
 from .authorization import AuthorizationError,change_pin,consume_approval,create_challenge,security_for,verify_challenge
-from .agentic import add_message,conversation_for,conversation_history,create_draft,mandate_for,serialize_intent
+from .agentic import add_message,conversation_for,conversation_history,create_draft,mandate_for,serialize_intent,assistant_response,ConversationConflict
 from .execution import execute_attempt
 from .access import COOKIE,issue_session,valid_session
 
@@ -50,6 +50,7 @@ class Batch(BaseModel):
 class AssistantTurn(BaseModel):
     text:str=Field(min_length=1,max_length=2000)
     conversation_id:str|None=Field(default=None,max_length=128)
+    request_id:str|None=Field(default=None,min_length=8,max_length=80)
     history:list[dict]=Field(default_factory=list,max_length=12)
 class Synthesis(BaseModel):
     text:str=Field(min_length=1,max_length=2000)
@@ -107,7 +108,7 @@ def health():return {"status":"ok","demo_mode":settings().demo_mode}
 @app.get("/api/assistant/status")
 def assistant_status():
     s=settings(); configured=nvidia_ready()
-    return {"nvidia_enabled":s.nvidia_enabled,"whisper_configured":configured,"nemotron_configured":configured,"magpie_configured":configured,"whisper_model":"nvidia-riva-whisper-large-v3","nemotron_model":s.nvidia_nemotron_model_id,"magpie_voice":s.nvidia_magpie_voice,"browser_tts_fallback":s.voice_browser_tts_fallback,"demo_mode":not configured}
+    return {"nvidia_enabled":s.nvidia_enabled,"whisper_configured":configured and bool(s.nvidia_whisper_function_id and s.nvidia_whisper_server),"nemotron_configured":configured and bool(s.nvidia_nemotron_model_id),"magpie_configured":configured and bool(s.nvidia_magpie_synthesis_url and s.nvidia_magpie_voice),"whisper_model":"nvidia-riva-whisper-large-v3","nemotron_model":s.nvidia_nemotron_model_id,"magpie_voice":s.nvidia_magpie_voice,"browser_tts_fallback":s.voice_browser_tts_fallback,"demo_mode":not configured,"configuration_is_live_verification":False}
 @app.get("/api/paypal/config")
 def paypal_config():
     s=settings();ready=configured()
@@ -119,7 +120,7 @@ async def paypal_browser_token():
 @app.post("/api/paypal/orders")
 async def paypal_create(data:PayPalCreate,db:Session=Depends(get_db)):
     try:return await create_order(db,data.payment_request_id)
-    except PayPalError as e:raise HTTPException(409,str(e))
+    except PayPalError as e:raise HTTPException(503 if e.retryable else 409,str(e))
 @app.get("/api/paypal/orders/{order_id}")
 def paypal_order(order_id:str,db:Session=Depends(get_db)):
     row=db.scalar(select(PayPalOrder).where(PayPalOrder.paypal_order_id==order_id))
@@ -128,7 +129,15 @@ def paypal_order(order_id:str,db:Session=Depends(get_db)):
 @app.post("/api/paypal/orders/{order_id}/capture")
 async def paypal_capture(order_id:str,db:Session=Depends(get_db)):
     try:return await capture_order(db,order_id)
-    except PayPalError as e:raise HTTPException(409,str(e))
+    except PayPalError as e:raise HTTPException(503 if e.retryable else 409,str(e))
+@app.post('/api/paypal/orders/{order_id}/refresh')
+async def paypal_refresh(order_id:str,db:Session=Depends(get_db)):
+    try:return await refresh_order(db,order_id)
+    except PayPalError as e:raise HTTPException(503 if e.retryable else 409,str(e))
+@app.get('/api/paypal/payment-requests/{payment_id}/order')
+def paypal_existing_order(payment_id:str,db:Session=Depends(get_db)):
+    row=db.scalar(select(PayPalOrder).where(PayPalOrder.payment_request_id==payment_id).order_by(PayPalOrder.created_at.desc()))
+    return serialise(row) if row else None
 @app.get("/api/paypal/payments")
 def paypal_payments(db:Session=Depends(get_db)):return [serialise(x) for x in db.scalars(select(PayPalOrder).order_by(PayPalOrder.created_at.desc())).all()]
 @app.post("/api/webhooks/paypal")
@@ -137,12 +146,16 @@ async def paypal_webhook(request:Request,db:Session=Depends(get_db)):
         event=await request.json()
         if not await verify_webhook(request.headers,event):raise HTTPException(401,"Invalid PayPal webhook signature")
         apply_webhook(db,event);return {"status":"accepted"}
-    except PayPalError as e:raise HTTPException(400,str(e))
+    except PayPalError as e:raise HTTPException(503 if e.retryable else 400,str(e))
+    except (ValueError,TypeError):raise HTTPException(400,'Invalid webhook JSON')
 @app.post("/api/voice/transcribe")
 async def voice_transcribe(audio:UploadFile=File(...)):
     try:
-        wav,duration=normalize_audio(await audio.read(),audio.content_type)
+        raw=await audio.read()
+        wav,duration=await asyncio.to_thread(normalize_audio,raw,audio.content_type)
         answer=await transcribe(wav)
+        from .context import contains_authentication_secret
+        if contains_authentication_secret(answer['transcript']):raise VoiceError('The recording appears to contain a PIN, password or OTP. It was not sent to the assistant. Use the secure dialog instead.')
         return {**answer,"duration_seconds":duration,"status":"completed"}
     except VoiceError as e:raise HTTPException(422,str(e))
 @app.post("/api/assistant/turn")
@@ -150,27 +163,10 @@ async def assistant_turn(data:AssistantTurn,db:Session=Depends(get_db)):
     from .context import contains_authentication_secret
     if contains_authentication_secret(data.text):
         raise HTTPException(422,"Do not share PINs, passwords or OTPs with the assistant. Use the secure payment dialog instead.")
-    conversation=conversation_for(db,data.conversation_id);history=conversation_history(db,conversation,settings().voice_history_max_turns)
-    add_message(db,conversation,"user",data.text)
     try:
-        from .context import contextual_intent
-        intent=contextual_intent(data.text,conversation) or await nemotron_intent(data.text,history)
-        if intent.tool=="prepare_manual_payment" and (not intent.args.get("merchant") or intent.args.get("merchant","").strip().lower() in {"it","that","this","the one"}) and conversation.selected_payment_id:intent.args={**intent.args,"payment_id":conversation.selected_payment_id,"merchant":""}
-        outcome=execute_tool(db,intent)
-    except VoiceError as e:raise HTTPException(422,str(e))
-    preview=outcome.get("preview")
-    response=outcome.get("response",intent.response or "Please clarify your request.")
-    if preview and preview.get("payment_id"):conversation.selected_payment_id=preview["payment_id"]
-    if intent.tool=="get_urgent_payment_requests" and len(outcome.get("data",[]))==1:conversation.selected_payment_id=outcome["data"][0]["id"]
-    context=dict(conversation.context or {})
-    context["preview"]=preview
-    context["awaiting_amount"]=intent.tool if intent.tool in {"prepare_topup","prepare_withdrawal"} and not intent.args.get("amount") else None
-    if intent.tool in {"list_payment_requests","get_urgent_payment_requests"}:
-        context["listed_payment_ids"]=[row["id"] for row in outcome.get("data",[]) if isinstance(row,dict) and "id" in row]
-        conversation.selected_payment_id=context["listed_payment_ids"][0] if len(context["listed_payment_ids"])==1 else None
-    conversation.context=context
-    add_message(db,conversation,"assistant",response,intent.tool or None);db.commit()
-    return {"conversation_id":conversation.id,"response":response,"intent":intent.tool or None,"tool_name":intent.tool or None,"data":outcome.get("data"),"action_preview":preview,"requires_confirmation":bool(preview and preview.get("requires_confirmation")),"voice_response_available":nvidia_ready(),"provider":intent.provider}
+        return await assistant_response(db,data.text,data.conversation_id,data.request_id,nemotron_intent)
+    except VoiceError as e:db.rollback();raise HTTPException(422,str(e))
+    except ConversationConflict as e:db.rollback();raise HTTPException(409,str(e))
 @app.get("/api/assistant/conversations/{conversation_id}")
 def get_conversation(conversation_id:str,db:Session=Depends(get_db)):
     row=db.get(Conversation,conversation_id)
@@ -185,7 +181,7 @@ def clear_conversation(conversation_id:str,db:Session=Depends(get_db)):
 async def voice_synthesize(data:Synthesis):
     try:
         audio,content_type=await synthesize(data.text,data.language or settings().nvidia_magpie_language,data.voice)
-        return Response(audio,media_type=content_type,headers={"Cache-Control":"no-store"})
+        return Response(audio,media_type=content_type,headers={"Cache-Control":"no-store","X-Voice-Provider":"nvidia-magpie"})
     except VoiceError as e:raise HTTPException(422,str(e))
 @app.get("/api/wallet")
 def get_wallet(db:Session=Depends(get_db)):
@@ -354,6 +350,30 @@ def payments(db:Session=Depends(get_db)):
     return [{**serialize(p),"trace":policy(db,p,"auto"),"payment_source":"PAYPAL_SANDBOX" if p.id in external else "AI_WALLET"} for p in rows]
 @app.post("/api/payments/{payment_id}/pay")
 def pay(payment_id:str,data:Pay=Pay()):return do_payment(payment_id,data)
+@app.get('/api/payments/{payment_id}/review')
+def payment_review(payment_id:str,db:Session=Depends(get_db)):
+    """Read-only review: reuse execution policy and recorded settlement evidence."""
+    p=db.get(PaymentRequest,payment_id)
+    if not p:raise HTTPException(404,'Payment request not found')
+    decision=policy(db,p,'manual')
+    confirmed=policy(db,p,'manual',True)
+    a=db.scalar(select(PaymentAttempt).where(PaymentAttempt.payment_request_id==p.id).order_by(PaymentAttempt.created_at.desc()))
+    order=db.scalar(select(PayPalOrder).where(PayPalOrder.payment_request_id==p.id).order_by(PayPalOrder.created_at.desc()))
+    op=db.scalar(select(Operation).where(Operation.idempotency_key==f'payment:{p.id}'))
+    journal=db.scalar(select(JournalTransaction).where(JournalTransaction.operation_id==op.id)) if op else None
+    result={'payment':serialize(p),'wallet_policy':decision,'wallet_policy_after_merchant_confirmation':confirmed,'wallet_per_transaction_limit':settings_for(db).per_transaction_limit,
+        'wallet_currency':wallet(db).currency,'paypal':{**serialise(order),'updated_at':order.updated_at,'captured_at':order.captured_at} if order else None,
+        'attempt':attempt_payload(a),'receipt':None}
+    if a:
+        external=not a.reservation_id
+        result['receipt']={'payment_id':p.id,'attempt_id':a.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,
+            'funding_source':'PAYPAL_SANDBOX' if external else 'AI_WALLET','status':a.status,
+            'timestamp':order.captured_at or order.updated_at if external and order else journal.created_at if journal else a.created_at,
+            'timestamp_label':'Capture recorded' if external and order and order.captured_at else 'Journal posted' if journal else 'Record timestamp',
+            'provider_reference':a.provider_reference,'journal_id':journal.id if journal else None,
+            'order_id':order.paypal_order_id if external and order else None,'capture_id':order.paypal_capture_id if external and order else None}
+    db.rollback()
+    return result
 @app.post("/api/payments/{payment_id}/hold")
 def hold(payment_id:str,db:Session=Depends(get_db)):
     wallet(db,True);p=db.scalar(select(PaymentRequest).where(PaymentRequest.id==payment_id).with_for_update())

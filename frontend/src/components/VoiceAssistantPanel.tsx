@@ -9,11 +9,11 @@ import {
   VolumeX,
   RotateCcw,
 } from "lucide-react";
-import { PayPalCheckoutPanel } from "./PayPalCheckoutPanel";
+import { PaymentGuardian } from "./PaymentGuardian";
 import { WalletPinDialog } from "./WalletPinDialog";
 import { WalletCompanion } from "./WalletCompanion";
 import { money } from "../lib/formatting";
-import { operationKey, finishOperation } from "../lib/api";
+import { api, operationKey, finishOperation } from "../lib/api";
 
 type Preview = {
   kind: string;
@@ -34,6 +34,7 @@ type Turn = {
   response: string;
   action_preview?: Preview;
   data?: unknown;
+  provider?: string;
 };
 type Message = { role: "user" | "assistant"; content: string };
 type VoiceState =
@@ -80,9 +81,33 @@ export function VoiceAssistantPanel({
   const [dataRows, setDataRows] = useState<any[]>([]);
   const inFlight = useRef(false);
   const starting = useRef(false);
+  const [heard, setHeard] = useState("");
+  const [level, setLevel] = useState(0);
+  const [provider, setProvider] = useState("");
+  const [speechProvider, setSpeechProvider] = useState("");
+  const [playbackProvider, setPlaybackProvider] = useState("");
+  const [reviewTranscript, setReviewTranscript] = useState(() => localStorage.getItem("wallet-review-transcript") !== "off");
+  const [readReplies, setReadReplies] = useState(false);
+  const readRepliesRef = useRef(readReplies);
+  readRepliesRef.current = readReplies;
+  const [browserSpeechAllowed, setBrowserSpeechAllowed] = useState(false);
+  const [recognizedMerchant, setRecognizedMerchant] = useState(false);
+  const requestGeneration = useRef(0);
+  const turnRequest = useRef<AbortController>();
+  const transcriptionRequest = useRef<AbortController>();
+  const synthesisRequest = useRef<AbortController>();
+  const pendingTurn = useRef<{ text: string; id: string }>();
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const [patientListening, setPatientListening] = useState(() => localStorage.getItem("wallet-patient-listening") === "true");
   const [conversationId, setConversationId] = useState(
-    () => localStorage.getItem("ai-wallet-conversation") || "",
+    () => {
+      const id = localStorage.getItem("ai-wallet-conversation") || crypto.randomUUID();
+      localStorage.setItem("ai-wallet-conversation", id);
+      return id;
+    },
   );
   const [messages, setMessages] = useState<Message[]>([]);
   const recorder = useRef<MediaRecorder>();
@@ -96,15 +121,22 @@ export function VoiceAssistantPanel({
   const audioUrl = useRef<string>();
   const playbackGeneration = useRef(0);
   const historyGeneration = useRef(0);
+  useEffect(() => {
+    let disposed = false;
+    void api("/api/assistant/status").then(result => { if (!disposed) setBrowserSpeechAllowed(result.browser_tts_fallback === true); }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, []);
   useEffect(
     () => () => {
       mounted.current = false;
+      requestGeneration.current++;
+      turnRequest.current?.abort(); transcriptionRequest.current?.abort(); synthesisRequest.current?.abort();
       playbackGeneration.current++;
       if (timer.current) window.clearInterval(timer.current);
       window.clearInterval(silenceTimer.current);
       if (recorder.current) { recorder.current.onstop = null; if (recorder.current.state === "recording") recorder.current.stop(); }
       streamRef.current?.getTracks().forEach(track => track.stop());
-      void contextRef.current?.close();
+      void contextRef.current?.close().catch(() => undefined);
       audio.current?.pause();
       if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
       window.speechSynthesis?.cancel();
@@ -120,12 +152,16 @@ export function VoiceAssistantPanel({
       .catch(() => undefined);
   }, []);
   const speak = async (value: string) => {
+    stopVoice();
     const generation = ++playbackGeneration.current;
+    const controller = new AbortController();
+    synthesisRequest.current = controller;
     try {
       const response = await fetch("/api/voice/synthesize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: value }),
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error();
       const blob = await response.blob();
@@ -135,43 +171,57 @@ export function VoiceAssistantPanel({
       audio.current = new Audio(url);
       audio.current.onended = () => {
         URL.revokeObjectURL(url);
-        setState("COMPLETED");
+        if (mounted.current && generation === playbackGeneration.current) setState(previewRef.current?.requires_confirmation ? "ACTION_PREVIEW" : "COMPLETED");
       };
+      audio.current.onerror = () => {
+        if (mounted.current && generation === playbackGeneration.current) { setError("Audio playback failed. Your written response is still available; try Read aloud again."); setState(previewRef.current?.requires_confirmation ? "ACTION_PREVIEW" : "COMPLETED"); }
+      };
+      setPlaybackProvider(response.headers.get("X-Voice-Provider") === "nvidia-magpie" ? "NVIDIA Magpie" : "Backend audio");
       setState("SPEAKING");
       await audio.current.play();
     } catch {
       if (!mounted.current || generation !== playbackGeneration.current) return;
-      if ("speechSynthesis" in window) {
+      if (browserSpeechAllowed && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(value);
-        utterance.onend = () => mounted.current && setState("COMPLETED");
-        utterance.onerror = () => mounted.current && setState("COMPLETED");
+        utterance.onend = () => mounted.current && generation === playbackGeneration.current && setState(previewRef.current?.requires_confirmation ? "ACTION_PREVIEW" : "COMPLETED");
+        utterance.onerror = utterance.onend;
+        setPlaybackProvider("Browser speech fallback");
         setState("SPEAKING");
         window.speechSynthesis.speak(utterance);
-      }
+      } else { setError("Audio is unavailable. Please read the written response."); setState(previewRef.current?.requires_confirmation ? "ACTION_PREVIEW" : "COMPLETED"); }
     }
   };
   const ask = async (value = text) => {
     if (!value.trim() || inFlight.current || recorder.current?.state === "recording") return;
     inFlight.current = true;
+    const generation = requestGeneration.current;
+    const controller = new AbortController();
+    turnRequest.current = controller;
+    if (pendingTurn.current?.text !== value) pendingTurn.current = { text: value, id: crypto.randomUUID() };
     setPreview(undefined);
     setPinRequired(false);
+    setRecognizedMerchant(false);
     setDataRows([]);
     stopVoice();
     setState("THINKING");
     setError("");
+    setProvider("");
+    setReply("");
     try {
-      const response = await fetch("/api/assistant/turn", {
+      const data = await api<Turn>("/api/assistant/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: value,
           conversation_id: conversationId || undefined,
+          request_id: pendingTurn.current!.id,
         }),
+        signal: controller.signal,
       });
-      const data: Turn = await response.json();
-      if (!mounted.current) return;
-      if (!response.ok) throw new Error(JSON.stringify(data));
+      if (!mounted.current || generation !== requestGeneration.current) return;
+      pendingTurn.current = undefined;
+      setProvider(data.provider || "unreported");
       if (data.conversation_id) {
         setConversationId(data.conversation_id);
         localStorage.setItem("ai-wallet-conversation", data.conversation_id);
@@ -187,40 +237,50 @@ export function VoiceAssistantPanel({
       setText("");
       onConfirmed();
       setState(data.action_preview ? "ACTION_PREVIEW" : "COMPLETED");
-      if (mode === "voice") void speak(data.response);
+      if (modeRef.current === "voice" && readRepliesRef.current) void speak(data.response);
     } catch (cause) {
+      if (!mounted.current || generation !== requestGeneration.current || controller.signal.aborted) return;
       setError(
         cause instanceof Error ? cause.message : "Assistant request failed",
       );
       setState("ERROR");
     } finally {
-      inFlight.current = false;
+      if (generation === requestGeneration.current) inFlight.current = false;
     }
   };
   const newConversation = async () => {
     historyGeneration.current++;
+    requestGeneration.current++;
+    turnRequest.current?.abort(); transcriptionRequest.current?.abort();
+    pendingTurn.current = undefined; inFlight.current = false;
     stopVoice();
     if (conversationId)
       await fetch(`/api/assistant/conversations/${conversationId}`, {
         method: "DELETE",
       }).catch(() => undefined);
-    localStorage.removeItem("ai-wallet-conversation");
-    setConversationId("");
+    const id = crypto.randomUUID();
+    localStorage.setItem("ai-wallet-conversation", id);
+    setConversationId(id);
     setMessages([]);
     setReply("");
     setPreview(undefined);
     setText("");
+    setHeard("");
+    setProvider(""); setSpeechProvider(""); setPlaybackProvider(""); setError("");
     setState("IDLE");
   };
   const start = async () => {
     if (starting.current || inFlight.current || recorder.current?.state === "recording" || state === "TRANSCRIBING" || state === "UPLOADING") return;
     starting.current = true;
+    const generation = requestGeneration.current;
+    const requestedMode = modeRef.current;
+    setError(""); setSpeechProvider("");
     setPreview(undefined);
     setPinRequired(false);
     stopVoice();
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!mounted.current) { stream.getTracks().forEach(track => track.stop()); return; }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true} });
+      if (!mounted.current || generation !== requestGeneration.current || requestedMode !== modeRef.current) { stream.getTracks().forEach(track => track.stop()); return; }
       streamRef.current = stream;
       const mime = [
         "audio/webm;codecs=opus",
@@ -239,9 +299,10 @@ export function VoiceAssistantPanel({
         stream.getTracks().forEach((track) => track.stop());
         window.clearInterval(timer.current);
         window.clearInterval(silenceTimer.current);
-        void contextRef.current?.close();
+        void contextRef.current?.close().catch(() => undefined);
         contextRef.current = undefined;
-        if (!mounted.current) return;
+        if (!mounted.current || generation !== requestGeneration.current) return;
+        setLevel(0);
         setState("UPLOADING");
         try {
           const blob = new Blob(chunks.current, {
@@ -250,18 +311,25 @@ export function VoiceAssistantPanel({
           const form = new FormData();
           form.append("audio", blob, "wallet-command");
           setState("TRANSCRIBING");
+          const controller = new AbortController();
+          transcriptionRequest.current = controller;
           const response = await fetch("/api/voice/transcribe", {
             method: "POST",
             body: form,
+            signal: controller.signal,
           });
           const data = await response.json();
-          if (!mounted.current) return;
+          if (!mounted.current || generation !== requestGeneration.current) return;
+          if (response.status === 401) window.dispatchEvent(new Event("wallet-session-expired"));
           if (!response.ok)
             throw new Error(data.detail || "Transcription failed");
           setText(data.transcript);
+          setHeard(data.transcript || "");
+          setSpeechProvider(data.provider === "nvidia-riva-whisper-large-v3" ? "NVIDIA Whisper" : "Unreported transcription provider");
           setState("TRANSCRIPT_READY");
-          if (mode === "voice" && data.transcript?.trim()) await ask(data.transcript);
+          if (modeRef.current === "voice" && !reviewTranscript && data.transcript?.trim()) await ask(data.transcript);
         } catch (cause) {
+          if (!mounted.current || generation !== requestGeneration.current) return;
           setError(
             cause instanceof Error ? cause.message : "Recording upload failed",
           );
@@ -283,6 +351,7 @@ export function VoiceAssistantPanel({
         silenceTimer.current = window.setInterval(() => {
           analyser.getFloatTimeDomainData(samples);
           const rms = Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);
+          setLevel(Math.min(1, rms * 15));
           const now = performance.now();
           if (rms > 0.018) { voicedFrames++; lastSpeech = now; }
           if (voicedFrames >= 3 && now - lastSpeech > (patientListening ? 2600 : 1600)) stop();
@@ -290,7 +359,7 @@ export function VoiceAssistantPanel({
             nextRecorder.onstop = null;
             stop();
             stream.getTracks().forEach(track => track.stop());
-            void context.close();
+            void context.close().catch(() => undefined);
             contextRef.current = undefined;
             setState("IDLE");
             setError("I didn’t hear anything. Tap the microphone to try again, or switch to chat.");
@@ -303,21 +372,21 @@ export function VoiceAssistantPanel({
         1000,
       );
       setState("RECORDING");
-    } catch {
+    } catch (cause) {
       if (recorder.current?.state === "recording") { recorder.current.onstop = null; recorder.current.stop(); }
       streamRef.current?.getTracks().forEach(track => track.stop());
       window.clearInterval(silenceTimer.current);
-      void contextRef.current?.close();
+      void contextRef.current?.close().catch(() => undefined);
       contextRef.current = undefined;
-      setError(
-        "Microphone permission was not granted. Type your request instead.",
-      );
+      if (!mounted.current || generation !== requestGeneration.current) return;
+      setError(cause instanceof DOMException && cause.name === "NotAllowedError" ? "Microphone permission was not granted. Type your request instead." : "Recording could not start. Check your microphone and browser audio support, or type your request.");
       setState("ERROR");
     } finally {
       starting.current = false;
     }
   };
   const stop = () => {
+    setLevel(0);
     window.clearInterval(silenceTimer.current);
     if (recorder.current?.state === "recording") recorder.current.stop();
     if (timer.current) window.clearInterval(timer.current);
@@ -327,14 +396,34 @@ export function VoiceAssistantPanel({
   }, [seconds, state]);
   const stopVoice = () => {
     playbackGeneration.current++;
+    synthesisRequest.current?.abort();
     audio.current?.pause();
     if (audioUrl.current) { URL.revokeObjectURL(audioUrl.current); audioUrl.current = undefined; }
     window.speechSynthesis?.cancel();
-    setState("COMPLETED");
+    setState(previewRef.current?.requires_confirmation ? "ACTION_PREVIEW" : "COMPLETED");
   };
-  useEffect(() => { if (autoStart) void start(); }, []);
+  useEffect(() => {
+    requestGeneration.current++;
+    turnRequest.current?.abort(); transcriptionRequest.current?.abort();
+    inFlight.current = false;
+    if (autoStart) void start();
+    else {
+      if (recorder.current?.state === "recording") {
+        recorder.current.onstop = null;
+        recorder.current.stop();
+      }
+      window.clearInterval(timer.current);
+      window.clearInterval(silenceTimer.current);
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      void contextRef.current?.close().catch(() => undefined);
+      contextRef.current = undefined;
+      setLevel(0);
+      stopVoice();
+    }
+  }, [mode]);
   const confirm = async () => {
     if (!preview || inFlight.current) return;
+    if (preview.kind === "payment" && !preview.verified && !recognizedMerchant) return;
     if (
       preview.kind === "prepare_topup" ||
       preview.kind === "prepare_withdrawal"
@@ -361,7 +450,7 @@ export function VoiceAssistantPanel({
         path = `/api/payments/${preview.payment_id}/hold`;
       } else if (preview.kind === "payment" && preview.payment_id) {
         path = `/api/payments/${preview.payment_id}/pay`;
-        body.confirm_unknown_merchant = !preview.verified;
+        body.confirm_unknown_merchant = recognizedMerchant;
       } else return;
       const response = await fetch(path, {
         method: preview.kind === "autopay" ? "PATCH" : "POST",
@@ -438,6 +527,13 @@ export function VoiceAssistantPanel({
           <RotateCcw size={14} /> New chat
         </button>
       </div>
+      <div className="assistant-progress" role="status" aria-live="polite">{stateCopy[state]}{state === "RECORDING" ? " — pause when you’re finished" : ""}</div>
+      <p className="assistant-privacy" aria-label="Assistant provider">{provider === "nvidia-nemotron" ? "Reasoning: NVIDIA Nemotron" : provider === "demo-parser" ? "Reasoning: deterministic demo parser (NVIDIA was not used)" : provider === "context-resolver" ? "Reasoning: saved conversation context (no model call this turn)" : "Reasoning: no provider result yet"}{speechProvider && ` · Last transcription: ${speechProvider}`}{playbackProvider && ` · Last playback: ${playbackProvider}`}</p>
+      <label className="assistant-privacy"><input type="checkbox" checked={reviewTranscript} disabled={state === "RECORDING" || busy} onChange={event => { setReviewTranscript(event.target.checked); localStorage.setItem("wallet-review-transcript", event.target.checked ? "on" : "off"); }}/> Review transcript before sending</label>
+      <label className="assistant-privacy"><input type="checkbox" checked={readReplies} onChange={event => { setReadReplies(event.target.checked); if (!event.target.checked) stopVoice(); }}/> Read replies aloud in voice mode</label>
+      {state === "RECORDING" && <div className="listening-meter" aria-label="Microphone input level"><span style={{width: `${Math.max(3, level * 100)}%`}}/></div>}
+      {heard && <p className="heard-transcript"><strong>I heard:</strong> {heard}</p>}
+      {state === "TRANSCRIPT_READY" && <p className="assistant-privacy">Check or edit the transcript below, then select Send request. Nothing has been submitted to the assistant yet.</p>}
       {mode === "voice" && <><div className={`voice-aura ${state === "RECORDING" || state === "SPEAKING" ? "active" : ""}`} aria-hidden="true"><WalletCompanion/><i/><i/></div><label className="assistant-privacy"><input type="checkbox" checked={patientListening} disabled={state === "RECORDING"} onChange={event => { setPatientListening(event.target.checked); localStorage.setItem("wallet-patient-listening",String(event.target.checked)); }}/> Give me more time to pause between words (next recording)</label></>}
       {messages.length > 0 && (
         <div
@@ -461,11 +557,11 @@ export function VoiceAssistantPanel({
           onClick={state === "RECORDING" ? stop : start}
           disabled={busy || submitting}
           aria-label={
-            state === "RECORDING" ? "Stop recording" : "Start recording"
+            state === "RECORDING" ? "Stop recording" : state === "SPEAKING" ? "Interrupt and speak" : "Start recording"
           }
         >
           {state === "RECORDING" ? <Square size={22} /> : <Mic size={24} />}
-          <span>{state === "RECORDING" ? `${seconds}s` : "Speak"}</span>
+          <span>{state === "RECORDING" ? `${seconds}s` : state === "SPEAKING" ? "Interrupt" : "Speak"}</span>
         </button>
         <div className="voice-compose">
           <label htmlFor="wallet-command">
@@ -474,12 +570,14 @@ export function VoiceAssistantPanel({
           <div>
             <input
               id="wallet-command"
-              disabled={state === "RECORDING" || busy}
+              disabled={state === "RECORDING" || busy || submitting}
               value={text}
               onChange={(event) => {
                 setText(event.target.value);
                 setPreview(undefined);
                 setPinRequired(false);
+                setRecognizedMerchant(false);
+                stopVoice();
                 if (state === "ACTION_PREVIEW") setState("IDLE");
               }}
               onKeyDown={(event) => event.key === "Enter" && void ask()}
@@ -487,7 +585,7 @@ export function VoiceAssistantPanel({
             />
             <button
               onClick={() => void ask()}
-              disabled={busy || state === "RECORDING" || !text.trim()}
+              disabled={busy || submitting || state === "RECORDING" || !text.trim()}
               aria-label="Send request"
             >
               <Send size={17} />
@@ -503,7 +601,7 @@ export function VoiceAssistantPanel({
               <span>{item.merchant || item.kind || "Payment"}</span>
               <strong>
                 {typeof item.amount === "number"
-                  ? money(item.amount)
+                  ? item.currency && item.currency !== "INR" ? `${(item.amount / 100).toFixed(2)} ${item.currency}` : money(item.amount)
                   : item.status}
               </strong>
             </div>
@@ -514,6 +612,7 @@ export function VoiceAssistantPanel({
         <div className={`assistant-message ${error ? "error" : ""}`}>
           <span>{error ? "Issue" : "AI Wallet"}</span>
           <p>{error || reply}</p>
+          {error && pendingTurn.current && <button className="text-button" disabled={busy || submitting} onClick={() => void ask(pendingTurn.current!.text)}>Retry this request</button>}
           {state === "SPEAKING" && (
             <button className="text-button" onClick={stopVoice}>
               <VolumeX size={14} /> Stop audio
@@ -526,38 +625,25 @@ export function VoiceAssistantPanel({
           )}
         </div>
       )}
-      {preview?.requires_confirmation && (
+      {preview?.kind === "payment" && preview.payment_id && <PaymentGuardian key={`${preview.payment_id}:${preview.payment_source}`} paymentId={preview.payment_id} initialSource={preview.payment_source} onChanged={onConfirmed} onCancel={() => { setPreview(undefined); stopVoice(); void ask("cancel"); }} />}
+      {preview?.requires_confirmation && preview.kind !== "payment" && (
         <div className="voice-preview">
           <div>
             <span className="eyebrow">CONFIRMATION REQUIRED</span>
             <b>{previewText}</b>
-            <p>Review this preview. The assistant cannot approve it for you.</p>
+            <p>Check these details before approving.</p>
           </div>
           <div className="preview-actions">
-            {preview.kind === "payment" &&
-            preview.payment_source === "PAYPAL_SANDBOX" &&
-            preview.payment_id ? (
-              <PayPalCheckoutPanel
-                paymentId={preview.payment_id}
-                amount={preview.amount || 0}
-                onComplete={() => {
-                  setReply(
-                    "PayPal capture completed and was confirmed by the backend.",
-                  );
-                  setPreview(undefined);
-                  onConfirmed();
-                }}
-              />
-            ) : (
               <button disabled={submitting || busy} onClick={confirm}>
                 {submitting ? "Processing…" : "Confirm action"}
               </button>
-            )}
             <button
               className="secondary"
+              disabled={submitting || busy}
               onClick={() => {
                 setPreview(undefined);
-                setState("COMPLETED");
+                stopVoice();
+                void ask("cancel");
               }}
             >
               Cancel

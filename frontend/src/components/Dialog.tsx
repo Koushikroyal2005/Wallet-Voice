@@ -6,11 +6,13 @@ export function Dialog({
   children,
   onClose,
   busy = false,
+  variant = "modal",
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   busy?: boolean;
+  variant?: "modal" | "drawer";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -25,7 +27,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className="dialog"
+      className={`dialog ${variant === "drawer" ? "review-drawer" : ""}`}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();

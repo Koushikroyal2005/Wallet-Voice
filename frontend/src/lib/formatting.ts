@@ -1,5 +1,5 @@
 export const money = (paise = 0) => new Intl.NumberFormat('en-IN', {
-  style: 'currency', currency: 'INR', maximumFractionDigits: 0,
+  style: 'currency', currency: 'INR', minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2,
 }).format(paise / 100);
 
 const labels: Record<string, string> = {

@@ -4,6 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { guardianFixture } from './guardian-fixture.mjs';
 
 const output = resolve('..', 'artifacts', 'product-review');
 await mkdir(output, { recursive: true });
@@ -40,6 +41,7 @@ await page.route('**/api/**', async route => {
   else if (path === '/api/auth/login') { authenticated = true;result = { authenticated }; }
   else if (path === '/api/wallet') result = { posted_balance: posted, reserved_amount: 0, available_balance: posted };
   else if (path === '/api/payments') result = payments;
+  else if (path.endsWith('/review')) result = guardianFixture(payments.find(p => path.includes(`/${p.id}/`)));
   else if (path === '/api/wallet/transactions') result = activities;
   else if (path === '/api/wallet/reservations') result = [];
   else if (path === '/api/mandates') result = [];
@@ -66,7 +68,9 @@ try {
   await page.getByRole('button',{name:'Unlock wallet'}).click();
   await page.getByRole('heading', { name: 'Money moves. On your terms.' }).waitFor();
   async function screen(name) {
-    await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: true });
+    if(!name.startsWith('guardian-'))await page.evaluate(()=>window.scrollTo(0,0));
+    await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: false, animations:'disabled' });
+    if(!name.startsWith('guardian-'))await page.screenshot({ path: resolve(output, `${name}-full.png`), fullPage: true, animations:'disabled' });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
   }
   for (const [width,height] of [[1440,1000],[1024,900],[768,1024],[390,844]]) {
@@ -76,6 +80,15 @@ try {
       await page.waitForTimeout(100);
       await screen(`${name.toLowerCase()}-${width}`);
     }
+    await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+    await page.getByRole('button',{name:'Review payment',exact:true}).click();
+    await page.getByRole('region',{name:'Payment Guardian'}).getByText('Indian Railways',{exact:true}).waitFor();
+    await page.getByRole('dialog').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
+    await screen(`guardian-${width}`);
+    assert.ok(await page.getByRole('dialog').evaluate(el=>el.scrollWidth<=el.clientWidth),'Guardian drawer overflow');
+    await page.getByRole('dialog').getByRole('button',{name:'Confirm action',exact:true}).scrollIntoViewIfNeeded();
+    await screen(`guardian-actions-${width}`);
+    await page.keyboard.press('Escape');
   }
   await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('navigation').getByRole('button',{name:'Wallet',exact:true}).click();
@@ -120,33 +133,27 @@ try {
   assert.equal(await page.getByRole('button',{name:'Confirm action'}).count(),0,'Editing must discard old approval preview');
   assert.equal(requests.filter(r=>r.path.endsWith('/pay')).length,0,'Assistant preview must not pay');
   await screen('assistant-chat');
+  const turnCount = requests.filter(r => r.path === '/api/assistant/turn').length;
+  await page.getByRole('button',{name:'Voice',exact:true}).click();
+  await page.getByText('Microphone permission was not granted. Type your request instead.').waitFor();
+  await page.getByRole('button',{name:'Chat',exact:true}).click();
+  assert.equal(await page.getByLabel('Ask about your wallet or payments').inputValue(),'Use PayPal instead','Mode changes preserve the unfinished correction');
+  assert.equal(await page.getByRole('button',{name:'Confirm action'}).count(),0,'Mode changes must not restore a stale preview');
+  assert.equal(requests.filter(r => r.path === '/api/assistant/turn').length,turnCount,'Mode changes do not resubmit a turn');
   await page.keyboard.press('Escape');
-  const orb = page.getByRole('button', {name: 'Open wallet assistant; Enter for chat, Shift Enter for voice'});
-  await orb.click({button:'right'});
-  await page.getByRole('button', {name:'Chat',exact:true}).click();
-  await page.getByRole('dialog').waitFor();
+  const orb = page.getByRole('button', {name: 'Open wallet assistant',exact:true});
+  await orb.click();
+  await page.getByRole('heading',{name:'Your wallet assistant',exact:true}).waitFor();
   await page.keyboard.press('Escape');
-  const box = await orb.boundingBox();
-  await page.mouse.move(box.x + 25, box.y + 25);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 25, box.y - 100, {steps:10});
-  await page.mouse.up();
-  assert.equal(await page.getByRole('dialog').count(),0,'Dragging must not open assistant');
-  assert.ok(await page.evaluate(() => localStorage.getItem('wallet-assistant-y')));
-  await orb.dblclick({delay:70});
-  await page.getByRole('heading',{name:'Let’s talk'}).waitFor();
+  assert.ok(await orb.evaluate(el=>el===document.activeElement),'Closing assistant restores launcher focus');
+  await page.getByRole('button',{name:'Talk',exact:true}).click();
+  await page.getByRole('heading',{name:'Let’s talk',exact:true}).waitFor();
   await page.getByText('Microphone permission was not granted. Type your request instead.').waitFor();
   await screen('assistant-voice');
   await page.keyboard.press('Escape');
-  const moved = await orb.boundingBox();
-  await page.mouse.click(moved.x+25,moved.y+25);
-  await page.waitForTimeout(70);
-  await page.mouse.move(moved.x+25,moved.y+25);
-  await page.mouse.down();
-  await page.waitForTimeout(360);
-  await page.mouse.move(moved.x-70,moved.y-20,{steps:5});
-  await page.mouse.up();
+  await page.getByRole('button',{name:'Type',exact:true}).focus();
+  await page.keyboard.press('Enter');
   await page.getByRole('heading',{name:'Your wallet assistant',exact:true}).waitFor();
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({status:'passed',screenshots:output,viewports:4,screens:4,journeys:['funding/activity refresh','recipient draft','permission review','stale assistant preview cleared']},null,2));
+  console.log(JSON.stringify({status:'passed',screenshots:output,viewports:4,screens:5,journeys:['funding/activity refresh','recipient draft','permission review','stale assistant preview cleared','single tap assistant','explicit Talk/Type','keyboard launcher']},null,2));
 } finally { await browser.close(); server.kill(); }

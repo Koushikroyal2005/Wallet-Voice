@@ -9,7 +9,7 @@ declare global {
 }
 let sdkPromise: Promise<void> | undefined;
 function loadSdk() {
-  if (window.paypal) return Promise.resolve();
+  if (window.paypal?.createInstance) return Promise.resolve();
   if (sdkPromise) return sdkPromise;
   sdkPromise = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
@@ -45,21 +45,58 @@ export function PayPalCheckoutPanel({
   complete.current = onComplete;
   const active = useRef(false);
   const [pendingOrder, setPendingOrder] = useState("");
+  const [phase, setPhase] = useState("Connecting");
+  const [order, setOrder] = useState<any>();
+  const capturing = useRef(false);
+  const completed = useRef(false);
+  const expectedOrder = useRef("");
+  const terminal = useRef(false);
+  const generation = useRef(0);
+  const receive = (result: any) => {
+    setOrder(result);
+    terminal.current = ["COMPLETED", "DENIED", "DECLINED", "FAILED", "REFUNDED", "VOIDED"].includes(result.status);
+    if (result.status === "COMPLETED") {
+      setPendingOrder(""); setPhase("Completed"); setState("The backend verified your PayPal capture.");
+      if (!completed.current) { completed.current = true; complete.current(); }
+    } else if (["DENIED", "DECLINED", "FAILED", "REFUNDED", "VOIDED"].includes(result.status)) {
+      setPendingOrder(""); setPhase("Failed or denied");
+      setState(result.status === "REFUNDED" ? "This PayPal payment was refunded." : "PayPal did not complete this payment. Your wallet funds were not used.");
+    } else if (result.status === "PENDING") {
+      setPendingOrder(result.order_id); setPhase("Processing"); setState("PayPal is processing your capture. Waiting for a confirmed result.");
+    } else {
+      setPendingOrder(""); setPhase("Ready for approval");
+      setState(result.status === "APPROVED" ? "Buyer approval received. You can finish the approved payment." : "Review and approve using your Sandbox buyer account.");
+    }
+  };
   useEffect(() => {
     let disposed = false;
+    const turn = ++generation.current;
+    active.current = false; capturing.current = false; completed.current = false; terminal.current = false; expectedOrder.current = "";
+    setBusy(false);
+    setOrder(undefined); setPendingOrder(""); setPhase("Connecting");
     setReady(false);
     setState("Connecting to PayPal…");
     void (async () => {
       try {
         const c = await api("/api/paypal/config");
-        if (!c.configured)
+        if (!c.configured || c.environment !== "sandbox")
           throw new Error("PayPal Sandbox is not configured yet.");
         if (disposed) return;
         setConfig(c);
-        const token = await api("/api/paypal/browser-client-token");
+        let existing = await api(`/api/paypal/payment-requests/${paymentId}/order`);
+        if (disposed) return;
+        if (existing) {
+          expectedOrder.current = existing.order_id;
+          if (["CREATED", "APPROVED", "AWAITING_BUYER_APPROVAL"].includes(existing.status)) {
+            existing = await post(`/api/paypal/orders/${existing.order_id}/refresh`);
+            if (disposed) return;
+          }
+          receive(existing);
+          if (["COMPLETED", "PENDING", "DENIED", "DECLINED", "FAILED", "REFUNDED", "VOIDED"].includes(existing.status)) return;
+        }
         await loadSdk();
         const sdk = await window.paypal.createInstance({
-          clientToken: token.client_token,
+          clientId: c.client_id,
           components: ["paypal-payments"],
           pageType: "checkout",
         });
@@ -71,47 +108,44 @@ export function PayPalCheckoutPanel({
         if (disposed) return;
         session.current = sdk.createPayPalOneTimePaymentSession({
           onApprove: async (data: any) => {
-            if (disposed) return;
+            if (disposed || capturing.current || terminal.current || data.orderId !== expectedOrder.current) return;
+            capturing.current = true;
+            setPhase("Processing");
             setState("Confirming your payment…");
             try {
               const captured = await post(
                 `/api/paypal/orders/${data.orderId}/capture`,
               );
               if (disposed) return;
-              if (captured.status === "COMPLETED") {
-                setState("Payment completed.");
-                complete.current();
-              } else if (captured.status === "PENDING") {
-                setPendingOrder(data.orderId);
-                setState(
-                  "PayPal is processing your payment. We’ll wait for confirmation.",
-                );
-              } else
-                setState(
-                  `PayPal returned ${captured.status.toLowerCase()}. Your wallet funds were not used.`,
-                );
+              receive(captured);
             } catch (error) {
-              if (!disposed)
+              if (!disposed) {
+                setPhase("Processing"); setPendingOrder(data.orderId);
                 setState(
-                  (error as Error).message +
-                    " You can reopen checkout to check this order.",
+                  "Capture confirmation was interrupted. Checking the same order; do not start another payment.",
                 );
+              }
             } finally {
-              active.current = false;
+              if (turn === generation.current) { active.current = false; capturing.current = false; }
               if (!disposed) setBusy(false);
             }
           },
           onCancel: () => {
+            if (disposed || capturing.current || terminal.current) return;
             active.current = false;
             if (!disposed) {
               setBusy(false);
+              setPhase("Ready for approval");
               setState("Checkout closed. Reopen it to finish the same order.");
             }
           },
           onError: () => {
+            if (disposed || capturing.current || terminal.current) return;
             active.current = false;
             if (!disposed) {
               setBusy(false);
+              setPhase("Status unknown");
+              if (expectedOrder.current) setPendingOrder(expectedOrder.current);
               setState(
                 "PayPal could not finish. Retry to resume the same order.",
               );
@@ -119,49 +153,61 @@ export function PayPalCheckoutPanel({
           },
         });
         setReady(true);
+        setPhase("Ready for approval");
         setState("Ready for your Sandbox buyer approval.");
       } catch (error) {
-        if (!disposed) setState((error as Error).message);
+        if (!disposed) { setPhase("Unavailable"); setState((error as Error).message); }
       }
     })();
     return () => {
       disposed = true;
+      generation.current++;
       session.current = undefined;
     };
   }, [paymentId, retry]);
   useEffect(() => {
     if (!pendingOrder) return;
+    let disposed = false;
+    let running = false;
+    let attempts = 0;
     const timer = window.setInterval(() => {
-      void api(`/api/paypal/orders/${pendingOrder}`)
+      if (running || ++attempts > 12) { if (attempts > 12) window.clearInterval(timer); return; }
+      running = true;
+      void post(`/api/paypal/orders/${pendingOrder}/refresh`)
         .then((order) => {
-          if (order.status === "COMPLETED") {
-            setPendingOrder("");
-            complete.current();
-          }
+          if (!disposed) receive(order);
         })
-        .catch(() =>
-          setState(
-            "Status refresh unavailable. Your payment is still being checked.",
-          ),
-        );
-    }, 3000);
-    return () => window.clearInterval(timer);
+        .catch(() => { if (!disposed) setState("Status confirmation is unavailable. The outcome is still unknown; do not pay again."); })
+        .finally(() => { running = false; });
+    }, 5000);
+    return () => { disposed = true; window.clearInterval(timer); };
   }, [pendingOrder]);
   async function checkout() {
-    if (active.current || !session.current) return;
+    if (active.current || !session.current || terminal.current) return;
+    const turn = generation.current;
     active.current = true;
+    setPhase("Waiting for buyer approval");
     setBusy(true);
     setState("Opening PayPal…");
     try {
       await session.current.start(
         { presentationMode: "auto" },
         post("/api/paypal/orders", { payment_request_id: paymentId }).then(
-          (created) => ({ orderId: created.order_id }),
+          (created) => {
+            if (turn !== generation.current) throw new Error("Checkout closed.");
+            expectedOrder.current = created.order_id; setOrder(created);
+            if (!["CREATED", "AWAITING_BUYER_APPROVAL", "APPROVED"].includes(created.status)) {
+              receive(created); throw new Error("This order already has a recorded result.");
+            }
+            return { orderId: created.order_id };
+          },
         ),
       );
     } catch (error) {
+      if (turn !== generation.current || terminal.current || capturing.current) return;
       active.current = false;
       setBusy(false);
+      setPhase("Status unknown");
       setState(
         (error as Error).message ||
           "Unable to open PayPal. Retry to resume your order.",
@@ -173,21 +219,24 @@ export function PayPalCheckoutPanel({
       <strong>PayPal Sandbox</strong>
       <span>{money(amount)} · paid externally</span>
       <small>Your internal wallet balance stays unchanged.</small>
+      {order && <small>PayPal amount: {order.provider_currency} {order.provider_amount}</small>}
+      <strong role="status">{phase}</strong>
       {config?.checkout_currency === "USD" && (
         <small>
           Demo conversion: ₹{config.demo_inr_per_usd} per USD. Review the dollar
           amount at checkout.
         </small>
       )}
-      <button disabled={!ready || busy || !!pendingOrder} onClick={checkout}>
+      <button disabled={!ready || busy || !!pendingOrder || ["Completed", "Failed or denied"].includes(phase)} onClick={checkout}>
         {busy ? "Waiting for PayPal…" : "Continue with PayPal"}
       </button>
-      {!ready && (
+      {(!ready || !!pendingOrder || phase === "Status unknown") && !["Completed", "Failed or denied"].includes(phase) && (
         <button className="secondary" onClick={() => setRetry(retry + 1)}>
           Reconnect
         </button>
       )}
       <span role="status">{state}</span>
+      {order?.capture_id && <small>Capture reference: {order.capture_id}</small>}
     </div>
   );
 }

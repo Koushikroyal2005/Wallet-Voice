@@ -1,5 +1,19 @@
 # Implementation status
 
+## Guardian conversation reliability — 2026-11-10
+
+Grounded urgent-payment references, ambiguity/expiry checks, source memory, explanations, bounded assistant replay IDs and transaction-free model inference are implemented. AI prepares reviews only. Transcript review defaults on; spoken replies are opt-in. Closing/switching invalidates pending audio callbacks and stops microphone tracks. Provider labels distinguish NVIDIA inference, deterministic demo parsing, context resolution and speech fallback. Reviews preserve fractional rupees and require acknowledgement of unknown businesses.
+
+Observed validation: **162 local tests passed, 16 PostgreSQL tests skipped locally**; the new assistant duplicate-turn PostgreSQL race ran separately in a fresh isolated schema and **passed (1)**. The other 15 integration tests were not rerun. Production frontend build, Python compilation, existing four-viewport browser checks and seven synthetic voice browser journeys passed. The original reset-based suite was not invoked; development data and private `.env` were untouched.
+
+The 40-case deterministic dataset passed. Real configured NVIDIA Nemotron evaluation finished at **36/40 combined cases**, including **8/12 model-routed cases**, 24 context-resolver cases and 4 secret guards. Four live cases safely returned no preparation tool (decimal top-up, withdrawal, unfamiliar merchant and multiple train requests); they remain failed quality checks, not passed provider tests. Real microphone quality, live Whisper/Magpie audio, and real Sandbox payment approval/capture/webhooks were not verified in this phase. See `docs/VOICE_TESTING.md` for exact scope, commands, file changes and the manual device test plan.
+
+## Repository-inspired conversation refinement — 2026-11-09
+
+Applied interaction ideas to the existing assistant without adding a voice framework or changing payment execution: chat/voice mode changes preserve the component and unfinished input; short payment-source replies resolve against server-selected requests; corrections clear the selection; microphone input drives a visible meter; completed transcripts have an “I heard” label; recording requests echo cancellation/noise suppression; playback callbacks ignore interrupted generations; the microphone explicitly offers Interrupt while speaking. Closing/switching releases microphone resources. Financial review remains required.
+
+Verified context/voice checks: 31 passed. Browser fixture journeys at four viewports and production build passed during this revision. No Docker or live-provider tests. Partial transcripts, spoken barge-in while TTS plays, semantic end-of-turn detection and continuous listening are not implemented; the interrupt action is a visible user control. No commits or pushes were made.
+
 ## Plain-language product refinement — 2026-11-08
 
 - Compact Home assistant with direct Talk / Type controls, aligned actions and literal payment labels; original SVG companion replaces the generic bot and unverified online dot.
