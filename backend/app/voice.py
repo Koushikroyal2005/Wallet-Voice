@@ -37,9 +37,9 @@ def demo_intent(text:str)->Intent:
     if re.search(r'\b(?:bypass|ignore|skip)\b.{0,30}\b(?:approval|confirmation|pin|rules)\b',t):return Intent('',{},'Financial actions always require your approval in the secure review.')
     if "balance" in t or "available" in t:return Intent("get_wallet_balance",{})
     if 'transactions' in t or 'recent activity' in t:return Intent('get_wallet_transactions',{})
-    if "pending" in t:return Intent("list_payment_requests",{})
+    if "pending" in t or 'payments are waiting' in t:return Intent("list_payment_requests",{})
     if "draft" in t and ("show" in t or "list" in t):return Intent("list_payment_drafts",{})
-    if "urgent" in t:return Intent("get_urgent_payment_requests",{})
+    if "urgent" in t or 'about to expire' in t:return Intent("get_urgent_payment_requests",{})
     if "pay all" in t or "eligible" in t:return Intent("evaluate_batch_payments",{})
     if "withdraw" in t:return Intent("prepare_withdrawal",{"amount":value} if value else {})
     if re.search(r'\badd\b|\btop[ -]?up\b',t):return Intent("prepare_topup",{"amount":value} if value else {})
@@ -123,6 +123,15 @@ def execute_tool(db:Session,intent:Intent):
     if 'amount' in intent.args and (type(intent.args['amount']) is not int or not 0<intent.args['amount']<=10_000_000):
         raise VoiceError('Please provide one positive INR amount within the supported range.')
     w=wallet(db);b=balances(db,w)
+    if intent.tool=='snooze_payment':
+        from .reminders import schedule,valid
+        from .models import PaymentReminder
+        from datetime import timedelta
+        p=db.get(PaymentRequest,intent.args.get('payment_id'));now=datetime.now(timezone.utc)
+        if not valid(p,now):return {'response':'This request is expired, held or already submitted; no reminder was changed.'}
+        schedule(db,now)
+        for row in db.scalars(select(PaymentReminder).where(PaymentReminder.payment_request_id==p.id,PaymentReminder.status.in_(['PENDING','RETRY']))):row.next_attempt_at=min(now+timedelta(minutes=5),utc(p.expires_at)-timedelta(seconds=30))
+        return {'response':'I postponed eligible background reminders by up to five minutes, staying before the deadline. The saved request remains in Attention. Notifications must be enabled; no payment was authorized.'}
     if intent.tool=="get_wallet_balance":return {"response":f"Your available demo balance is {b['available_balance']/100:.2f} {w.currency}. {b['reserved_amount']/100:.2f} {w.currency} is reserved.","data":{**b,'currency':w.currency}}
     if intent.tool=="get_wallet_transactions":
         rows=db.scalars(select(Operation).order_by(Operation.created_at.desc()).limit(10)).all()
@@ -132,6 +141,12 @@ def execute_tool(db:Session,intent:Intent):
         if not p:return {'response':'That payment request is no longer available. Please ask for your pending payments.','clear_selection':True}
         expired=p.expires_at and utc(p.expires_at)<=datetime.now(timezone.utc)
         if intent.tool=='get_payment_details':
+            from .models import MerchantOrder
+            from .merchants import result as merchant_result
+            order=db.scalar(select(MerchantOrder).where(MerchantOrder.payment_request_id==p.id))
+            if order:
+                state=merchant_result(db,order)
+                return {'response':f"Authenticated demo sender: {p.merchant}. Payment status: {state['payment_status']}. Merchant order status: {state['order_status']}. This is simulated. Payment confirmation alone does not confirm fulfillment.",'data':[state]}
             urgency='EXPIRED' if expired else policy(db,p,'auto')['urgency']
             reason='its deadline has passed' if expired else 'you placed it on hold' if p.explicit_hold else 'its deadline is less than 15 minutes away' if urgency=='URGENT' else 'its deadline is approaching' if urgency=='DUE_SOON' else 'it has no urgent deadline'
             return {'response':f'{p.merchant}, {p.amount/100:.2f} {p.currency}, is {urgency.lower().replace("_"," ")} because {reason}. Payment status: {p.status.lower()}.','data':[payment_details(db,p)]}

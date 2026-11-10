@@ -1,4 +1,6 @@
-# Wallet-Voice Guardian — V1
+# Wallet-Voice Guardian — V2
+
+V2 adds authenticated local merchant checkouts: save railway and food requests, review both by voice, approve exact simulated-wallet amounts with one PIN, and let each merchant poll settlement before separately recording fulfillment. See [merchant API and two local examples](docs/MERCHANT_API.md) and [V2 checklist](docs/V2_IMPLEMENTATION.md). These are simulated merchants; no real railway booking, food delivery, bank or UPI integration is claimed.
 
 Say “Pay the train and movie tickets, not the food order.” Wallet-Voice resolves stored requests, shows an exact review, checks wallet policies and requires one PIN for those exact simulated internal-wallet payments. It records each result and journal receipt separately. PayPal Sandbox continues to require its own buyer approval and provider-confirmed capture.
 

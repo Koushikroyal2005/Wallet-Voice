@@ -1,4 +1,13 @@
-# Wallet-Voice V1 — reproducible demo
+# Wallet-Voice V2 — merchant-to-wallet demo
+
+1. Rebuild normally, then provision the two merchants once using `docker compose exec api python -m app.provision_merchants`. Store each returned secret only on its corresponding local merchant server; see `docs/MERCHANT_API.md`.
+2. Open the railway and food example pages on ports 8091 and 8092. Save both requests, note their deadlines, then leave the pages.
+3. Open Wallet-Voice. Find the saved checkouts in Attention. Say or type “Pay my railway and food requests.” Check exact recipients, amounts, source and deadlines.
+4. Try “Don't pay the food order.” Then prepare both again. Enter the PIN in the secure exact review. Check the individual journal receipts. No statement of payment success should imply booking or food delivery.
+5. Return to each merchant page. Poll: payment is confirmed, fulfillment is not. Press the separate simulated fulfillment action, then poll again.
+6. Show duplicate creation preserves the request ID. Show an expired or unpaid order cannot be newly paid/fulfilled. Label all provider fixtures separately from real NVIDIA/PayPal tests.
+
+## Previous V1 demo
 
 1. Run `docker compose up --build -d` and `docker compose exec api python -m app.demo`. Existing ledger rows remain intact. The seed opening top-up is idempotent; existing merchant deadlines are not reset. Use fresh pending requests; never erase a development database for a presentation.
 2. Unlock the wallet with its configured PIN. Keep AutoPay off. Show the saved train, movie, electronics and food requests. Explain that these are demo requests, not real bookings or fulfillment.

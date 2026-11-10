@@ -15,7 +15,7 @@ def request_snapshot(p):
 def digest(snapshot):
     return hashlib.sha256(json.dumps(snapshot,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 
-def create_batch(db,ids,recognized=False):
+def create_batch(db,ids,recognized=False,acknowledged_ids=None):
     if not ids or len(ids)>50 or len(set(ids))!=len(ids):raise FinancialError('Choose 1–50 distinct payment requests')
     wallet(db,True)
     rows=[]
@@ -23,7 +23,7 @@ def create_batch(db,ids,recognized=False):
         p=db.get(PaymentRequest,ident)
         if not p:raise FinancialError('A selected payment is unavailable')
         rows.append(request_snapshot(p))
-    snapshot={'items':rows,'source':'AI_WALLET','recognized':recognized}
+    snapshot={'items':rows,'source':'AI_WALLET','recognized':recognized,'acknowledged_ids':sorted(acknowledged_ids or [])}
     batch=PaymentBatch(snapshot=snapshot,snapshot_hash=digest(snapshot),total=sum(p['amount'] for p in rows),expires_at=datetime.now(timezone.utc)+timedelta(minutes=5))
     db.add(batch);db.flush()
     for ident in ids:db.add(PaymentBatchItem(batch_id=batch.id,payment_request_id=ident))
@@ -52,7 +52,8 @@ def view(db,batch):
     items=[]
     for saved in batch.snapshot['items']:
         p=db.get(PaymentRequest,saved['id']);codes=[]
-        d=policy(db,p,'manual',batch.snapshot['recognized']) if p else {'decision':'REJECTED','reason_codes':['UNAVAILABLE']}
+        acknowledged=saved['id'] in batch.snapshot.get('acknowledged_ids',[])
+        d=policy(db,p,'manual',batch.snapshot['recognized'] or acknowledged) if p else {'decision':'REJECTED','reason_codes':['UNAVAILABLE']}
         codes=list(d['reason_codes'])
         if p and request_snapshot(p)!=saved:codes.append('DETAILS_CHANGED')
         if d['decision']=='ELIGIBLE':
@@ -63,7 +64,7 @@ def view(db,batch):
         a=db.get(PaymentAttempt,item.attempt_id) if item and item.attempt_id else None
         op=db.scalar(select(Operation).where(Operation.idempotency_key==f"payment:{saved['id']}"))
         j=db.scalar(select(JournalTransaction).where(JournalTransaction.operation_id==op.id)) if op else None
-        items.append({**saved,'blocked':bool(codes),'reason_codes':codes,'status':a.status if a else p.status if p else 'UNAVAILABLE',
+        items.append({**saved,'acknowledged':acknowledged,'blocked':bool(codes),'reason_codes':codes,'status':a.status if a else p.status if p else 'UNAVAILABLE',
                       'attempt_id':a.id if a else None,'failure_reason':a.failure_reason if a else None,
                       'receipt':{'journal_id':j.id,'operation_id':op.id,'timestamp':utc(j.created_at).isoformat(),'status':a.status,'provider_reference':a.provider_reference} if j and a else None})
     states=[i['status'] for i in items]
@@ -99,7 +100,7 @@ def claim(db,batch,token):
         p=db.get(PaymentRequest,item.payment_request_id)
         existing=db.scalar(select(PaymentAttempt).where(PaymentAttempt.payment_request_id==p.id,PaymentAttempt.status.in_(['PROCESSING','SUCCEEDED'])))
         if existing:raise FinancialError('A selected payment was claimed elsewhere; review again')
-        item.attempt_id=reserve(db,p,f'batch-v1:{batch.id}:{p.id}','manual',batch.snapshot['recognized']).id
+        item.attempt_id=reserve(db,p,f'batch-v1:{batch.id}:{p.id}','manual',batch.snapshot['recognized'] or p.id in batch.snapshot.get('acknowledged_ids',[])).id
     batch.status='PROCESSING';emit(db,'payment.batch.updated',{'batch_id':batch.id})
 
 def execute_batch(factory,ident,token,executor):

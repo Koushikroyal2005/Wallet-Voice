@@ -26,7 +26,7 @@ export function AttentionQueue({ onReview }: { onReview: (id: string) => void })
   }
   return <section className="attention-queue surface" aria-label="Payment reminders">
     <div><span className="eyebrow">NEEDS YOUR ATTENTION</span><h2>Remembered for you</h2></div>
-    {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><p>{money(item.amount)} · Due {new Date(item.deadline).toLocaleString()}</p></div><button className="secondary" onClick={() => onReview(item.payment_id)}>Review now</button></article>) : <p>No deadline reminders right now. Payment requests stay saved when you leave.</p>}
+    {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><small>{item.stage === 'EXPIRED' ? 'Expired checkout' : item.stage === 'URGENT' ? 'Expiring soon' : item.stage === 'SAVED_CHECKOUT' ? 'Saved merchant checkout · Simulated' : 'Upcoming payment'}</small><p>{money(item.amount)} · {item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'Saved for review'}</p></div><button className="secondary" onClick={() => onReview(item.payment_id)}>{item.stage === 'EXPIRED' ? 'View details' : 'Review now'}</button></article>) : <p>No deadline reminders right now. Payment requests stay saved when you leave.</p>}
     <details><summary>Reminder preferences</summary>
       <label><input type="checkbox" checked={data?.preferences?.enabled ?? true} onChange={async e => {
         try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, enabled: e.target.checked }) }); await refetch(); } catch (error) { setMessage((error as Error).message); }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, operationKey, post } from '../lib/api';
 import { PayPalCheckoutPanel } from './PayPalCheckoutPanel';
 import { PaymentBatchReview } from './PaymentBatchReview';
+import { paymentStatus } from '../lib/formatting';
 
 const amount = (value: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value / 100);
 const reasons: Record<string, string> = {
@@ -81,6 +82,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
       <div><dt>Deadline</dt><dd>{p.expires_at ? new Date(p.expires_at).toLocaleString() : 'No deadline supplied'}</dd></div>
       <div><dt>Verification</dt><dd>{p.verified ? 'Marked verified in this app’s merchant record' : 'Unrecognized business — check independently'}{p.provider?.includes('DEMO') ? ' · Demo merchant' : ''}</dd></div>
     </dl>
+    {review.merchant_order && <div className="guardian-rules"><strong>Simulated merchant order · {review.merchant_order.merchant_order_reference}</strong><p>Payment: {paymentStatus(review.merchant_order.payment_status)}. {review.merchant_order.fulfilled_at ? 'Merchant marked this order fulfilled.' : 'Fulfillment has not been confirmed by the merchant. A payment receipt does not confirm a booking or delivery.'}</p></div>}
     <label>Payment source<select aria-label="Payment source" value={actualSource} disabled={busy || locked || expired || held} onChange={e => { setSource(e.target.value); setRecognized(false); setError(''); }}><option value="AI_WALLET">Demo wallet</option>{p.category !== 'person_to_person' && <option value="PAYPAL_SANDBOX">PayPal Sandbox</option>}</select></label>
     <div className="guardian-rules"><strong>{paypal ? 'PayPal approval' : 'Why this wallet decision?'}</strong>
       {paypal ? <p>PayPal handles buyer approval and capture. Internal wallet limits do not govern these external funds. Your demo wallet is not debited or reserved.</p> : <>

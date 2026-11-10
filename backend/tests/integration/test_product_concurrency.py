@@ -74,7 +74,11 @@ def test_concurrent_merchant_permissions_respect_daily_allowance(factory):
     fund(factory,1_000_000)
     with factory() as db:
         db.add(AutoPaySettings(enabled=True,time_sensitive_only=False,minimum_balance=0))
-        db.add(SpendingMandate(merchant=settings().demo_merchant_name,max_amount=150000,daily_limit=150000,expires_at=datetime.now(timezone.utc)+timedelta(days=1)));db.commit()
+        expiry=datetime.now(timezone.utc)+timedelta(days=1)
+        details={'merchant':settings().demo_merchant_name,'daily_limit':150000,'expires_at':int(expiry.timestamp())}
+        challenge=create_challenge(db,'MANDATE',150000,settings().demo_merchant_name,details)
+        token=verify_challenge(db,challenge.id,'123456');db.flush();consume_approval(db,token,'MANDATE',150000,settings().demo_merchant_name,details)
+        db.add(SpendingMandate(merchant=settings().demo_merchant_name,max_amount=150000,daily_limit=150000,expires_at=expiry));db.commit()
     def checkout(ref):
         with factory() as db:return merchant_checkout(MerchantCheckout(merchant=settings().demo_merchant_name,order_reference=ref,amount=125000),settings().demo_merchant_api_key,db)
     outcomes=parallel(lambda:checkout('DEMO-one'),lambda:checkout('DEMO-two'))

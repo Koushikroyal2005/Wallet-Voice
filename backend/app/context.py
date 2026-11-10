@@ -38,7 +38,7 @@ def _resolve_context(text, conversation):
         conversation.selected_payment_id=None
         conversation.context={}
         return Intent('',{},'Stopped. No new payment was made. Which payment would you like to look at?')
-    if value in {'why','why that one','why is it urgent','explain','show details'}:
+    if value in {'why','why that one','why is it urgent','explain','show details','who sent this request','is this merchant recognized','what happened to my order'}:
         if not conversation.selected_payment_id:return Intent('',{},'Which payment should I explain? Ask for the list or name the business.')
         return Intent('get_payment_details',{'payment_id':conversation.selected_payment_id})
     source=({'paypal':'PAYPAL_SANDBOX','use paypal':'PAYPAL_SANDBOX','use paypal instead':'PAYPAL_SANDBOX',
@@ -75,6 +75,9 @@ def _resolve_context(text, conversation):
     if value in {'pay it','pay that','pay that one','pay this','pay the one','yes pay it','pay it again','pay that one again'}:
         if not conversation.selected_payment_id:return Intent('',{},'Which payment do you mean? Choose a merchant or ask for your pending payments.')
         return Intent('prepare_manual_payment',{'payment_id':conversation.selected_payment_id,'payment_source':preview.get('payment_source') or (conversation.context or {}).get('selected_source','AI_WALLET')})
+    if value=='remind me later':
+        if not conversation.selected_payment_id:return Intent('',{},'Which payment should I remind you about? Choose a request first.')
+        return Intent('snooze_payment',{'payment_id':conversation.selected_payment_id})
     if value in {'hold it','hold that','hold that one','hold until friday','hold for later'}:
         if not conversation.selected_payment_id:return Intent('',{},'Which payment would you like to hold?')
         return Intent('prepare_hold',{'payment_id':conversation.selected_payment_id})

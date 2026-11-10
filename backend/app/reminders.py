@@ -38,6 +38,9 @@ def schedule(db,now=None):
             continue
         left=(utc(p.expires_at)-now).total_seconds()
         for stage,threshold in [('UPCOMING',10800),('URGENT',900)]:
+            for old in rows:
+                if old.stage==stage and old.status=='CANCELLED' and left<=threshold:
+                    old.status='PENDING';old.next_attempt_at=now;old.attempts=0
             if left<=threshold and not any(r.stage==stage for r in rows):
                 row=PaymentReminder(payment_request_id=p.id,stage=stage);db.add(row)
                 emit(db,'payment.reminder',{'payment_id':p.id,'stage':stage})
@@ -98,6 +101,11 @@ def attention(db=Depends(get_db)):
             p=db.get(PaymentRequest,row.payment_request_id)
             if not valid(p,now) or p.id in seen:continue
             seen.add(p.id);data.append({'id':row.id,'payment_id':p.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,'deadline':utc(p.expires_at),'stage':row.stage})
+        # Durable merchant checkouts remain discoverable even before reminder thresholds.
+        for p in db.scalars(select(PaymentRequest).where(PaymentRequest.category=='merchant_checkout',PaymentRequest.status.in_(['PENDING','HELD','FAILED','EXPIRED'])).order_by(PaymentRequest.created_at.desc()).limit(50)):
+            if p.id in seen:continue
+            expired=p.expires_at and utc(p.expires_at)<=now
+            data.append({'id':'checkout:'+p.id,'payment_id':p.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,'deadline':utc(p.expires_at) if p.expires_at else None,'stage':'EXPIRED' if expired else 'SAVED_CHECKOUT'})
     db.commit()
     return {'items':data,'preferences':{'enabled':prefs.enabled,'push_enabled':prefs.push_enabled,'quiet_start':prefs.quiet_start,'quiet_end':prefs.quiet_end},'push_configured':bool(settings().vapid_public_key and settings().vapid_private_key and settings().vapid_subject),'public_key':settings().vapid_public_key or None}
 

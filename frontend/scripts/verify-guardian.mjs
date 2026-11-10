@@ -8,7 +8,7 @@ let browser;
 try {
   for(let n=0;n<100;n++){try{await fetch('http://127.0.0.1:5192');break;}catch{await new Promise(r=>setTimeout(r,100));}}
   browser=await chromium.launch({headless:true});
-  for(const scenario of ['wallet','paypal-pending','paypal-completed','failed','unknown','insufficient','expired','hold']) {
+  for(const scenario of ['wallet','paypal-pending','paypal-completed','refunded','failed','unknown','insufficient','expired','hold']) {
     const page=await browser.newPage({viewport:{width:scenario==='wallet'?1440:390,height:900}});
     let payCalls=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));
     const p={id:'rail',merchant:'Indian Railways',category:'travel',description:'Ticket',amount:125050,currency:'INR',verified:scenario!=='unknown',status:'PENDING',expires_at:new Date(Date.now()+(scenario==='expired'?-60000:3600000)).toISOString()};
@@ -17,6 +17,7 @@ try {
     if(scenario==='insufficient')result.wallet_policy={...result.wallet_policy,decision:'HELD_INSUFFICIENT_BALANCE',reason_codes:['MINIMUM_BALANCE']};
     if(scenario==='expired')result.wallet_policy={...result.wallet_policy,decision:'EXPIRED',reason_codes:['EXPIRED']};
     if(scenario.startsWith('paypal')){p.status=scenario==='paypal-pending'?'PROCESSING':'SUCCEEDED';result.payment.status=p.status;result.paypal={status:scenario==='paypal-pending'?'PENDING':'COMPLETED',order_id:'FIXTURE-ORDER',capture_id:'FIXTURE-CAPTURE',provider_currency:'USD',provider_amount:'14.89'};result.attempt={status:p.status};result.receipt={payment_id:p.id,merchant:p.merchant,amount:p.amount,currency:'INR',funding_source:'PAYPAL_SANDBOX',status:p.status,timestamp:new Date().toISOString(),timestamp_label:'Capture recorded',order_id:'FIXTURE-ORDER',capture_id:'FIXTURE-CAPTURE'};}
+    if(scenario==='refunded'){p.status='REFUNDED';result.payment.status='REFUNDED';result.paypal={status:'REFUNDED',order_id:'ORIGINAL-ORDER',capture_id:'ORIGINAL-CAPTURE',provider_currency:'USD',provider_amount:'14.89'};result.attempt={status:'REFUNDED'};result.receipt={payment_id:p.id,merchant:p.merchant,amount:p.amount,currency:'INR',funding_source:'PAYPAL_SANDBOX',status:'REFUNDED',timestamp:new Date().toISOString(),timestamp_label:'Capture recorded',order_id:'ORIGINAL-ORDER',capture_id:'ORIGINAL-CAPTURE'};}
     await page.addInitScript(()=>{window.EventSource=class{close(){}};});
     await page.route('https://**/*',r=>r.abort());
     await page.route('**/api/**',async route=>{
@@ -58,6 +59,9 @@ try {
       assert.ok(await panel.getByRole('button',{name:'Confirm action',exact:true}).isEnabled());
     }else if(scenario==='hold'){
       await panel.getByRole('button',{name:'Hold payment',exact:true}).click();await panel.getByRole('heading',{name:'Payment on hold',exact:true}).waitFor();
+    }else if(scenario==='refunded'){
+      await panel.getByRole('heading',{name:'Payment refunded',exact:true}).waitFor();
+      assert.equal(await panel.getByRole('heading',{name:'Payment completed',exact:true}).count(),0);
     }else if(scenario.startsWith('paypal')){
       await panel.getByRole('heading',{name:scenario==='paypal-pending'?'Waiting for confirmation':'Payment completed',exact:true}).waitFor();
       await panel.getByText(/Internal wallet limits do not govern/).waitFor();
@@ -70,5 +74,5 @@ try {
     }
     assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('PASSED: 8 Guardian browser fixture scenarios; desktop/mobile, duplicate-click guard, unknown merchant, policy holds, expiry, hold, failed and completed wallet records, pending/completed PayPal states.');
+  console.log('PASSED: 9 Guardian browser fixture scenarios; desktop/mobile, duplicate-click guard, unknown merchant, policy holds, expiry, hold, failed/completed wallet records, pending/completed/refunded PayPal states.');
 }finally{await browser?.close();server.kill();}

@@ -407,7 +407,7 @@ function WalletApp() {
             <p>
               {
                 {
-                  home: "Say what you need. We’ll help with the next step.",
+                  home: "Save merchant checkouts. Review them by voice. Approve securely.",
                   payments:
                     "Review what’s due, save a draft, or leave it for later.",
                   wallet:
@@ -720,7 +720,7 @@ function WalletApp() {
                 setExactBatch(response.id);
                 setBatch(undefined);
                 finishOperation("batch");
-              }, "Batch processed")
+              }, "Ready for review")
             }
           >
             Confirm {batch.eligible_count} payments

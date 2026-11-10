@@ -84,7 +84,7 @@ export function WalletView({
       <div className="section-heading">
         <div>
           <h2>Recent activity</h2>
-          <p>Every completed movement, in one place.</p>
+          <p>Recorded wallet movements. Payment settlement does not confirm merchant booking or delivery; check the request for fulfillment.</p>
         </div>
         <span className="badge">Demo wallet · no real bank transfers</span>
       </div>
@@ -927,6 +927,7 @@ export function MerchantDemo({ onChanged }: { onChanged: () => void }) {
   const state = status.data?.status || result?.status;
   return (
     <div className="merchant-demo-grid">
+      <section className="surface"><span className="eyebrow">TWO LOCAL DEMO MERCHANTS</span><h2>Save now. Review by voice later.</h2><p>Start the sample merchant servers using docs/MERCHANT_API.md. Each has its own server credential. Saved requests remain in Wallet-Voice after you leave checkout.</p><a className="secondary" href="http://localhost:8091" target="_blank" rel="noopener noreferrer">Open demo railway checkout</a><a className="secondary" href="http://localhost:8092" target="_blank" rel="noopener noreferrer">Open demo food checkout</a><p>Simulated payments and fulfillment only.</p></section>
       <section className="ticket-card surface">
         <span className="badge">
           <Train size={14} /> SAMPLE MERCHANT · INDIAN RAILWAYS

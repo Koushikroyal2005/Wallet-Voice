@@ -20,6 +20,8 @@ from .execution import execute_attempt
 from .access import COOKIE,issue_session,valid_session
 
 app=FastAPI(title="AI Wallet")
+from .merchants import router as merchant_router
+app.include_router(merchant_router)
 from .batch_routes import router as batch_router
 app.include_router(batch_router)
 from .reminders import router as reminder_router
@@ -29,8 +31,12 @@ app.add_middleware(CORSMiddleware,allow_origins=settings().web_allowed_origins.s
 @app.middleware('http')
 async def wallet_access(request:Request,call_next):
     path=request.url.path
+    # The published legacy placeholder is not a public merchant credential.
+    # Owner-authenticated /api/demo/checkout may still call the demo service internally.
+    if path=='/api/merchant/checkout' and settings().demo_merchant_api_key in {'','change-this-demo-merchant-key'}:
+        return JSONResponse({'detail':'Merchant authentication failed; configure a private legacy key or use the versioned merchant API'},status_code=401)
     public={'/health','/api/auth/session','/api/auth/login','/api/auth/logout','/api/webhooks/paypal','/api/merchant/checkout'}
-    if settings().require_wallet_login and path.startswith('/api/') and path not in public and request.method!='OPTIONS':
+    if settings().require_wallet_login and path.startswith('/api/') and not path.startswith('/api/merchant/v1/') and path not in public and request.method!='OPTIONS':
         with SessionLocal() as db:
             if not valid_session(db,request.cookies.get(COOKIE)):return JSONResponse({'detail':'Unlock your wallet to continue'},status_code=401)
     response=await call_next(request)
@@ -44,7 +50,7 @@ class RecipientCreate(BaseModel):name:str=Field(min_length=1,max_length=120);han
 class IntentCreate(BaseModel):amount:int=Field(gt=0,le=10_000_000);recipient_id:str|None=None;merchant:str|None=Field(default=None,max_length=120);note:str|None=Field(default=None,max_length=500);source:str=Field(default="AI_WALLET",pattern=r"^(AI_WALLET|PAYPAL_SANDBOX)$")
 class IntentExecute(BaseModel):approval_token:str=Field(min_length=20,max_length=255);idempotency_key:str=Field(min_length=8,max_length=255)
 class MandateCreate(BaseModel):merchant:str=Field(min_length=1,max_length=120);max_amount:int=Field(gt=0);daily_limit:int=Field(gt=0);expires_at:datetime;approval_token:str=Field(min_length=20,max_length=255)
-class MerchantCheckout(BaseModel):merchant:str=Field(min_length=1,max_length=120);order_reference:str=Field(min_length=3,max_length=160);amount:int=Field(gt=0,le=10_000_000);description:str=Field(default="Merchant checkout",max_length=500)
+class MerchantCheckout(BaseModel):merchant:str=Field(min_length=1,max_length=120);order_reference:str=Field(min_length=3,max_length=160);amount:int=Field(gt=0,le=10_000_000);description:str=Field(default="Merchant checkout",max_length=500);expires_at:datetime|None=None
 class AutoPatch(BaseModel):enabled:bool|None=None;time_sensitive_only:bool|None=None;per_transaction_limit:int|None=Field(default=None,gt=0);daily_limit:int|None=Field(default=None,gt=0);minimum_balance:int|None=Field(default=None,ge=0);allow_unknown_merchants:bool|None=None
 class Merchant(BaseModel):type:str
 class Pay(BaseModel):idempotency_key:str|None=None;confirm_unknown_merchant:bool=False;batch_id:str|None=None;approval_token:str|None=None
@@ -310,6 +316,7 @@ def add_mandate(data:MandateCreate,db:Session=Depends(get_db)):
     row=SpendingMandate(merchant=data.merchant,max_amount=data.max_amount,daily_limit=data.daily_limit,expires_at=data.expires_at);db.add(row);db.commit();return {"id":row.id,"status":row.status}
 @app.post("/api/mandates/{mandate_id}/revoke")
 def revoke_mandate(mandate_id:str,db:Session=Depends(get_db)):
+    wallet(db,True)
     row=db.get(SpendingMandate,mandate_id)
     if not row:raise HTTPException(404,"Mandate not found")
     row.status="REVOKED";db.commit();return {"id":row.id,"status":row.status}
@@ -320,13 +327,15 @@ def merchant_checkout(data:MerchantCheckout,x_merchant_key:str|None=Header(defau
     wallet(db,True)
     existing=db.scalar(select(PaymentRequest).where(PaymentRequest.provider==f"MERCHANT:{data.order_reference}"))
     if existing:
-        if existing.amount!=data.amount or existing.merchant!=data.merchant or existing.description!=data.description:raise HTTPException(409,"Order reference was already used with different details")
+        if existing.amount!=data.amount or existing.merchant!=data.merchant or existing.description!=data.description or (data.expires_at is not None and (existing.expires_at is None or data.expires_at!=utc(existing.expires_at))):raise HTTPException(409,"Order reference was already used with different details")
         return {"payment_request":serialize(existing),"status":existing.status,"idempotent":True}
+    expiry=data.expires_at or datetime.now(timezone.utc)+timedelta(minutes=30)
+    if expiry.tzinfo is None or not datetime.now(timezone.utc)<expiry<=datetime.now(timezone.utc)+timedelta(days=30):raise HTTPException(422,'Include a timezone and a future expiry within 30 days')
     permission=mandate_for(db,data.merchant,data.amount)
-    payment=PaymentRequest(merchant=data.merchant,category="merchant_checkout",description=data.description,amount=data.amount,verified=permission is not None,provider=f"MERCHANT:{data.order_reference}")
+    payment=PaymentRequest(merchant=data.merchant,category="merchant_checkout",description=data.description,amount=data.amount,verified=permission is not None,provider=f"MERCHANT:{data.order_reference}",expires_at=expiry)
     db.add(payment);db.flush()
     if not permission:
-        payment.explicit_hold=True;payment.status="HELD";emit(db,"payment.created",{"payment_id":payment.id});db.commit()
+        payment.status="HELD";emit(db,"payment.created",{"payment_id":payment.id});db.commit()
         return {"payment_request":serialize(payment),"status":"AWAITING_USER_APPROVAL","idempotent":False}
     try:
         attempt=reserve(db,payment,f"merchant:{data.order_reference}","manual")
@@ -379,6 +388,10 @@ def payment_review(payment_id:str,db:Session=Depends(get_db)):
             'timestamp_label':'Capture recorded' if external and order and order.captured_at else 'Journal posted' if journal else 'Record timestamp',
             'provider_reference':a.provider_reference,'journal_id':journal.id if journal else None,
             'order_id':order.paypal_order_id if external and order else None,'capture_id':order.paypal_capture_id if external and order else None}
+    from .models import MerchantOrder
+    from .merchants import result as merchant_result
+    merchant_order=db.scalar(select(MerchantOrder).where(MerchantOrder.payment_request_id==p.id))
+    result['merchant_order']=merchant_result(db,merchant_order) if merchant_order else None
     db.rollback()
     return result
 @app.post("/api/payments/{payment_id}/hold")

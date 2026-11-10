@@ -115,7 +115,11 @@ def test_provider_called_with_no_database_transaction(factory, monkeypatch):
 def test_merchant_failure_releases_daily_allowance(factory):
     day=datetime.now(ZoneInfo(settings().app_timezone)).date().isoformat()
     with factory() as db:
-        m=SpendingMandate(merchant=settings().demo_merchant_name,max_amount=200000,daily_limit=300000,expires_at=datetime.now(timezone.utc)+timedelta(days=1),context={'usage_date':day});db.add(m);db.commit()
+        expiry=datetime.now(timezone.utc)+timedelta(days=1)
+        details={'merchant':settings().demo_merchant_name,'daily_limit':300000,'expires_at':int(expiry.timestamp())}
+        challenge=create_challenge(db,'MANDATE',200000,settings().demo_merchant_name,details)
+        token=verify_challenge(db,challenge.id,'123456');db.flush();consume_approval(db,token,'MANDATE',200000,settings().demo_merchant_name,details)
+        m=SpendingMandate(merchant=settings().demo_merchant_name,max_amount=200000,daily_limit=300000,expires_at=expiry,context={'usage_date':day});db.add(m);db.commit()
         result=merchant_checkout(MerchantCheckout(merchant=settings().demo_merchant_name,order_reference='DEMO-failure',amount=125000,description='force-fail'),settings().demo_merchant_api_key,db)
         assert result['status']=='FAILED'
         db.expire_all();assert db.get(SpendingMandate,m.id).spent_today==0
@@ -156,13 +160,13 @@ def test_followup_source_switch_and_cancel_never_execute(factory):
     assert conversation.selected_payment_id is None
 
 
-def test_worker_processes_autopay_but_leaves_explicit_hold(factory):
+def test_worker_global_autopay_cannot_authorize_and_leaves_explicit_hold(factory):
     from app.maintenance import tick
     with factory() as db:
         eligible=payment(db);held=payment(db);held.explicit_hold=True;held.status='HELD';db.commit();a,b=eligible.id,held.id
     tick()
     with factory() as db:
-        assert db.get(PaymentRequest,a).status=='SUCCEEDED'
+        assert db.get(PaymentRequest,a).status=='PENDING'
         assert db.get(PaymentRequest,b).status=='HELD'
 
 

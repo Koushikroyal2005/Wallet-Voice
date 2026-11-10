@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, post } from '../lib/api';
-import { money } from '../lib/formatting';
+import { money, paymentStatus } from '../lib/formatting';
 
 export function PaymentBatchReview({ batchId, onChanged, onCancel }: { batchId: string; onChanged: () => void; onCancel: () => void }) {
+  const [reviewId, setReviewId] = useState(batchId);
   const [batch, setBatch] = useState<any>();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -11,32 +12,37 @@ export function PaymentBatchReview({ batchId, onChanged, onCancel }: { batchId: 
   const inFlight = useRef(false);
   useEffect(() => {
     let disposed = false;
-    const load = async () => { try { const data = await api(`/api/payment-batches/${batchId}`); if (!disposed) setBatch(data); } catch (e) { if (!disposed) setError((e as Error).message); } };
+    const load = async () => { try { const data = await api(`/api/payment-batches/${reviewId}`); if (!disposed) setBatch(data); } catch (e) { if (!disposed) setError((e as Error).message); } };
     void load(); const timer = window.setInterval(load, 3000);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [batchId]);
+  }, [reviewId]);
   async function confirm() {
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); setError('');
     try {
       if (!token.current) {
-        const approval = await post(`/api/payment-batches/${batchId}/authorize`, { pin });
+        const approval = await post(`/api/payment-batches/${reviewId}/authorize`, { pin });
         token.current = approval.approval_token; setPin('');
       }
-      setBatch(await post(`/api/payment-batches/${batchId}/confirm`, { approval_token: token.current })); onChanged();
+      setBatch(await post(`/api/payment-batches/${reviewId}/confirm`, { approval_token: token.current })); onChanged();
     } catch (e) { setError((e as Error).message); }
     finally { inFlight.current = false; setBusy(false); }
   }
   return <section className="batch-review" aria-label="Exact payment review">
     <span className="eyebrow">EXACT WALLET REVIEW · SIMULATED FUNDS</span>
-    <h3>{batch?.status === 'SUCCEEDED' ? 'All selected payments completed' : batch?.status === 'PARTIAL' ? 'Some payments need attention' : batch?.status === 'PROCESSING' ? 'Payments processing' : batch?.status === 'FAILED' ? 'Payments failed' : batch?.status === 'EXPIRED' ? 'Review expired' : 'Your selected payments'}</h3>
+    <h3>{batch?.status === 'SUCCEEDED' ? 'All selected payments completed' : batch?.status === 'PARTIAL' ? 'Some payments need attention' : batch?.status === 'PROCESSING' ? 'Payments processing' : batch?.status === 'FAILED' ? 'Payments failed' : batch?.status === 'EXPIRED' ? 'Review expired' : batch?.status === 'CANCELLED' ? 'Review cancelled' : 'Ready for review'}</h3>
     {!batch && <p role="status">Loading the exact server review…</p>}
     {batch && <>
       <ul className="batch-items">{batch.items.map((item: any) => <li key={item.id}>
         <div><strong>{item.merchant}</strong><b>{money(item.amount)}</b></div>
         <p>{item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'No deadline'} · {item.currency}</p>
-        <small>{item.verified ? 'Marked verified in this app' : 'Unrecognized business — check independently'}</small>
-        <p role="status">{item.attempt_id ? item.status : item.blocked ? `Blocked: ${item.reason_codes.map((s: string) => s.replaceAll('_', ' ').toLowerCase()).join(', ')}` : 'Ready for your approval'}</p>
+        <small>{item.verified ? item.provider?.startsWith('MERCHANT:') ? 'Authenticated demo merchant · Simulated checkout' : 'Marked verified in this app' : 'Unrecognized business — check independently'}</small>
+        {!item.verified && batch.status === 'REVIEW' && <button className="secondary" disabled={busy || item.acknowledged} onClick={async () => {
+          setBusy(true);
+          try { const next = await post(`/api/payment-batches/${reviewId}/acknowledge`, { payment_id: item.id }); token.current = undefined; setPin(''); setBatch(next); setReviewId(next.id); }
+          catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+        }}>{item.acknowledged ? 'Acknowledged for this review' : 'I checked this recipient independently'}</button>}
+        <p role="status">{item.attempt_id ? paymentStatus(item.status) : item.blocked ? `Blocked: ${item.reason_codes.map((s: string) => s.replaceAll('_', ' ').toLowerCase()).join(', ')}` : 'Ready for your approval'}</p>
         {item.failure_reason && <p>{item.failure_reason}</p>}
         {item.receipt && <details><summary>Payment receipt</summary><dl><dt>Payment</dt><dd>{item.id}</dd><dt>Status</dt><dd>{item.receipt.status}</dd><dt>Journal reference</dt><dd>{item.receipt.journal_id}</dd><dt>Recorded</dt><dd>{new Date(item.receipt.timestamp).toLocaleString()}</dd><dt>Source</dt><dd>Simulated wallet</dd></dl></details>}
       </li>)}</ul>
@@ -52,7 +58,7 @@ export function PaymentBatchReview({ batchId, onChanged, onCancel }: { batchId: 
     </>}
     {error && <p role="alert" className="error-banner">{error}</p>}
     <button className="secondary" disabled={busy} onClick={async () => {
-      try { if (batch?.status === 'REVIEW') await post(`/api/payment-batches/${batchId}/cancel`); onCancel(); }
+      try { if (batch?.status === 'REVIEW') await post(`/api/payment-batches/${reviewId}/cancel`); onCancel(); }
       catch (e) { setError((e as Error).message); }
     }}>{batch?.status === 'REVIEW' ? 'Cancel review' : 'Close review'}</button>
   </section>;

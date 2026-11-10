@@ -4,7 +4,7 @@ from sqlalchemy import select
 from .models import PaymentRequest,PaymentBatch
 from .payment_batches import create_batch,view,get_batch
 
-ALIASES={'train':{'train','railway','railways','rail','irctc'},'movie':{'movie','movies','cinema','cinemapass'},'food':{'food','meal','restaurant'}}
+ALIASES={'train':{'train','railway','railways','rail','irctc'},'movie':{'movie','movies','cinema','cinemapass'},'food':{'food','meal','restaurant','kitchen'}}
 STOP={'pay','my','the','a','an','ticket','tickets','request','requests','order','orders','please','and','for','me'}
 
 def matching(rows,phrase):
@@ -13,6 +13,18 @@ def matching(rows,phrase):
     for terms in ALIASES.values():
         if terms & words:expanded|=terms
     return [p for p in rows if expanded & set(re.findall(r'[a-z0-9]+',(p.merchant+' '+p.description+' '+p.category).lower()))]
+
+def status_intent(db,text,state):
+    from .voice import Intent
+    value=text.lower().strip().rstrip('.!?')
+    if not (value.startswith('did ') and 'payment' in value or value.startswith('what happened to ') or value in {'who sent this request','is this merchant recognized'}):return None
+    selected=state.selected_payment_id
+    if value in {'what happened to my order','who sent this request','is this merchant recognized'}:
+        return Intent('get_payment_details',{'payment_id':selected},provider='context-resolver') if selected else Intent('',{},'Which request? Name the merchant or choose one from Payments.',provider='context-resolver')
+    phrase=re.sub(r'\b(did|what|happened|to|my|payment|succeed|succeeded|order|orders)\b',' ',value)
+    matches=matching(list(db.scalars(select(PaymentRequest))),phrase)
+    if len(matches)!=1:return Intent('',{},f'I found {len(matches)} matching requests. Choose the exact request in Payments.',provider='context-resolver')
+    return Intent('get_payment_details',{'payment_id':matches[0].id},provider='context-resolver')
 
 def resolve(db,args,listed=()):
     rows=list(db.scalars(select(PaymentRequest).where(PaymentRequest.status.in_(['PENDING','HELD','FAILED']))))
@@ -33,6 +45,8 @@ def interpret(text,context):
     previous=context.get('batch_id')
     if previous and 'paypal' in value:return {'unsupported_source':True}
     if previous and value in {'how much will i have left if i pay these','how much will i have left','use my wallet','use wallet','use wallet instead','use my wallet instead'}:return {'existing':previous}
+    if previous and value in {'how much will remain','how much will remain?'}:return {'existing':previous}
+    if previous and value.startswith("don't pay "):return {'existing':previous,'remove':value[10:]}
     if previous and value.startswith('remove '):return {'existing':previous,'remove':value[7:]}
     if not re.match(r'^(?:please )?pay\b',value) or ' and ' not in value:return None
     if 'paypal' in value:return {'unsupported_source':True}

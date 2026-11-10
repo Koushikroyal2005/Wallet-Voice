@@ -10,7 +10,7 @@ def utc(value):return value if value.tzinfo else value.replace(tzinfo=timezone.u
 
 class FinancialError(ValueError): pass
 class TransitionError(FinancialError): pass
-ALLOWED={"PENDING":{"HELD","PROCESSING","EXPIRED"},"HELD":{"PENDING","PROCESSING","EXPIRED"},"PROCESSING":{"SUCCEEDED","FAILED"},"FAILED":{"PROCESSING","EXPIRED"},"SUCCEEDED":{"REFUNDED"}}
+ALLOWED={"PENDING":{"HELD","PROCESSING","EXPIRED","CANCELLED"},"HELD":{"PENDING","PROCESSING","EXPIRED","CANCELLED"},"PROCESSING":{"SUCCEEDED","FAILED"},"FAILED":{"PROCESSING","EXPIRED","CANCELLED"},"SUCCEEDED":{"REFUNDED"}}
 def emit(db:Session,event_type:str,payload:dict): db.add(AppEvent(event_type=event_type,payload=payload))
 def transition(p:PaymentRequest,target:str):
     if p.status==target:return
@@ -72,6 +72,7 @@ def policy(db:Session,p:PaymentRequest,mode="auto",merchant_confirmed=False):
     elif not p.verified and not merchant_confirmed and mode=="auto":codes.append("UNKNOWN_MERCHANT");decision="HELD_UNKNOWN_MERCHANT"
     elif not p.verified and not merchant_confirmed and mode=="manual":codes.append("UNKNOWN_MERCHANT_CONFIRMATION_REQUIRED");decision="MANUAL_CONFIRMATION_REQUIRED"
     elif mode=="auto" and not s.enabled:codes.append("AUTOPAY_DISABLED");decision="MANUAL_APPROVAL_REQUIRED"
+    elif mode=="auto" and not automatic_mandate(db,p,False):codes.append("MANDATE_REQUIRED");decision="MANUAL_APPROVAL_REQUIRED"
     elif mode=="auto" and s.time_sensitive_only and urgency=="FLEXIBLE":codes.append("TIME_SENSITIVE_ONLY");decision="HELD_FLEXIBLE"
     return {"policy_version":"financial-v2","mode":mode,"decision":decision,"reason_codes":codes,"urgency":urgency,"remaining_seconds":max(0,int(remaining)) if remaining is not None else None,"merchant_verified":p.verified,"transaction_amount":p.amount,"daily_spend":day_spend(db,w),**b,"settings":{"enabled":s.enabled,"time_sensitive_only":s.time_sensitive_only,"minimum_balance":s.minimum_balance,"daily_limit":s.daily_limit}}
 def post_journal(db:Session,w:Wallet,op:Operation,debit:LedgerAccount,credit:LedgerAccount,description:str):
@@ -118,6 +119,12 @@ def topup_or_withdraw(db:Session,amount:int,kind:str,key:str):
     if kind=="WITHDRAWAL" and balances(db,w)["available_balance"]<amount:raise FinancialError("Insufficient available wallet balance")
     bank=account(db,"demo_bank_clearing","ASSET","DEBIT");wa=db.get(LedgerAccount,w.ledger_account_id)
     post_journal(db,w,op,bank,wa,"Demo bank top-up") if kind=="TOPUP" else post_journal(db,w,op,wa,bank,"Demo bank withdrawal");emit(db,"wallet.updated",{"wallet_id":w.id,"operation_id":op.id});return op
+def automatic_mandate(db,p,lock=True):
+    # Identity is bound to the authenticated ingestion path, never a display name alone.
+    if not p.provider.startswith('MERCHANT:'):return None
+    from .agentic import mandate_for
+    return mandate_for(db,p.merchant,p.amount,lock)
+
 def reserve(db:Session,p:PaymentRequest,key:str,mode:str,confirm_unknown=False):
     db.flush()
     w=wallet(db,True)
@@ -133,6 +140,11 @@ def reserve(db:Session,p:PaymentRequest,key:str,mode:str,confirm_unknown=False):
     d=policy(db,p,mode,confirm_unknown)
     if d["decision"]!="ELIGIBLE":raise FinancialError(", ".join(d["reason_codes"]) or d["decision"])
     if db.scalar(select(PaymentReservation).where(PaymentReservation.payment_request_id==p.id,PaymentReservation.status=="ACTIVE").with_for_update()):raise FinancialError("Payment already reserved")
+    if mode=='auto':
+        mandate=automatic_mandate(db,p)
+        if not mandate:raise FinancialError('MANDATE_REQUIRED')
+        mandate.spent_today+=p.amount
+        p.trace={**(p.trace or {}),'mandate_id':mandate.id,'mandate_day':mandate.context['usage_date']}
     transition(p,"PROCESSING");a=PaymentAttempt(payment_request_id=p.id,idempotency_key=key);db.add(a);db.flush();r=PaymentReservation(wallet_id=w.id,payment_request_id=p.id,payment_attempt_id=a.id,amount=p.amount,currency=p.currency,expires_at=datetime.now(timezone.utc)+timedelta(minutes=10));db.add(r);db.flush();a.reservation_id=r.id;emit(db,"payment.reserved",{"payment_id":p.id,"reservation_id":r.id});return a
 def finalize(db:Session,attempt_id:str,success:bool,reference:str,reason:str|None=None):
     w=wallet(db,True)

@@ -42,7 +42,7 @@ def test_duplicate_key_creates_one_operation_and_journal(factory):
 def test_reconciliation_and_reservation(factory):
     fund(factory)
     with factory() as s:
-        s.add(AutoPaySettings(enabled=True,time_sensitive_only=False,minimum_balance=0));p=PaymentRequest(merchant="Rail",category="travel",description="x",amount=125000,verified=True);s.add(p);s.flush();reserve(s,p,"reserve-key","auto");s.commit()
+        s.add(AutoPaySettings(enabled=True,time_sensitive_only=False,minimum_balance=0));p=PaymentRequest(merchant="Rail",category="travel",description="x",amount=125000,verified=True);s.add(p);s.flush();reserve(s,p,"reserve-key","manual");s.commit()
     with factory() as s:
         for journal in s.scalars(select(JournalTransaction)).all():
             rows=s.scalars(select(LedgerEntry).where(LedgerEntry.journal_transaction_id==journal.id)).all();assert sum(x.amount for x in rows if x.direction=="DEBIT")==sum(x.amount for x in rows if x.direction=="CREDIT")
@@ -54,7 +54,7 @@ def test_concurrent_merchant_reservations_cannot_overspend(factory):
     barrier=threading.Barrier(2);out=[]
     def run(pid):
         try:
-            with factory() as s:barrier.wait();reserve(s,s.get(PaymentRequest,pid),f"merchant-{pid}","auto");s.commit();out.append("reserved")
+            with factory() as s:barrier.wait();reserve(s,s.get(PaymentRequest,pid),f"merchant-{pid}","manual");s.commit();out.append("reserved")
         except FinancialError:out.append("blocked")
     ts=[threading.Thread(target=run,args=(pid,)) for pid in ids];[t.start() for t in ts];[t.join() for t in ts]
     with factory() as s:assert out.count("reserved")==1 and balances(s,wallet(s))["available_balance"]==50000
@@ -65,7 +65,7 @@ def test_concurrent_daily_limit_reservations_cannot_exceed_limit(factory):
     barrier=threading.Barrier(2);out=[]
     def run(pid):
         try:
-            with factory() as s:barrier.wait();reserve(s,s.get(PaymentRequest,pid),f"daily-{pid}","auto");s.commit();out.append("ok")
+            with factory() as s:barrier.wait();reserve(s,s.get(PaymentRequest,pid),f"daily-{pid}","manual");s.commit();out.append("ok")
         except FinancialError:out.append("blocked")
     ts=[threading.Thread(target=run,args=(pid,)) for pid in ids];[t.start() for t in ts];[t.join() for t in ts]
     with factory() as s:assert out.count("ok")==1 and active_reserved(s,wallet(s))==150000
@@ -75,11 +75,11 @@ def test_duplicate_payment_attempt_and_reservation_are_singleton(factory):
         s.add(AutoPaySettings(enabled=True,time_sensitive_only=False,minimum_balance=0));p=PaymentRequest(merchant="A",category="x",description="x",amount=100000,verified=True);s.add(p);s.commit();pid=p.id
     barrier=threading.Barrier(2)
     def run(key):
-        with factory() as s:barrier.wait();reserve(s,s.get(PaymentRequest,pid),key,"auto");s.commit()
+        with factory() as s:barrier.wait();reserve(s,s.get(PaymentRequest,pid),key,"manual");s.commit()
     ts=[threading.Thread(target=run,args=(f"batch-{x}",)) for x in range(2)];[t.start() for t in ts];[t.join() for t in ts]
     with factory() as s:assert s.scalar(select(func.count(PaymentAttempt.id)))==1 and s.scalar(select(func.count(PaymentReservation.id)))==1
 def test_expired_reservation_does_not_reduce_available_balance(factory):
     fund(factory)
     with factory() as s:
-        s.add(AutoPaySettings(enabled=True,time_sensitive_only=False,minimum_balance=0));p=PaymentRequest(merchant="A",category="x",description="x",amount=100000,verified=True);s.add(p);s.flush();a=reserve(s,p,"expiry","auto");r=s.get(PaymentReservation,a.reservation_id);r.expires_at=r.created_at.replace(year=r.created_at.year-1);emit(s,"payment.reservation_expired",{"reservation_id":r.id});s.commit()
+        s.add(AutoPaySettings(enabled=True,time_sensitive_only=False,minimum_balance=0));p=PaymentRequest(merchant="A",category="x",description="x",amount=100000,verified=True);s.add(p);s.flush();a=reserve(s,p,"expiry","manual");r=s.get(PaymentReservation,a.reservation_id);r.expires_at=r.created_at.replace(year=r.created_at.year-1);emit(s,"payment.reservation_expired",{"reservation_id":r.id});s.commit()
     with factory() as s:assert balances(s,wallet(s))["available_balance"]==200000

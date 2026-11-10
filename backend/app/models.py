@@ -12,6 +12,23 @@ class Status(str, enum.Enum):
     CREATED="CREATED"; PENDING="PENDING"; HELD="HELD"; READY="READY"; AWAITING_APPROVAL="AWAITING_APPROVAL"; PROCESSING="PROCESSING"; SUCCEEDED="SUCCEEDED"; FAILED="FAILED"; EXPIRED="EXPIRED"; CANCELLED="CANCELLED"; REFUNDED="REFUNDED"
 class ReservationStatus(str, enum.Enum): ACTIVE="ACTIVE"; CONSUMED="CONSUMED"; RELEASED="RELEASED"; EXPIRED="EXPIRED"
 
+class MerchantIdentity(Base):
+    __tablename__='merchant_identities'
+    id: Mapped[str]=mapped_column(String,primary_key=True)
+    name: Mapped[str]=mapped_column(String(120),unique=True)
+    secret_hash: Mapped[str]=mapped_column(String(64))
+    active: Mapped[bool]=mapped_column(Boolean,default=True)
+
+class MerchantOrder(Base):
+    __tablename__='merchant_orders'
+    __table_args__=(UniqueConstraint('merchant_id','reference'),UniqueConstraint('merchant_id','idempotency_key'))
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    merchant_id: Mapped[str]=mapped_column(ForeignKey('merchant_identities.id'))
+    reference: Mapped[str]=mapped_column(String(160))
+    idempotency_key: Mapped[str]=mapped_column(String(160))
+    payment_request_id: Mapped[str]=mapped_column(ForeignKey('payment_requests.id'),unique=True)
+    fulfilled_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+
 class Wallet(Base):
     __tablename__="wallets"
     id: Mapped[str]=mapped_column(String,primary_key=True,default=uid); user_id: Mapped[str]=mapped_column(String,default="demo-user",unique=True); currency: Mapped[str]=mapped_column(String(3),default="INR")

@@ -5,6 +5,8 @@ export const money = (paise = 0) => new Intl.NumberFormat('en-IN', {
 const labels: Record<string, string> = {
   PENDING: 'Pending', HELD: 'On hold', PROCESSING: 'Processing',
   SUCCEEDED: 'Paid', FAILED: 'Failed', EXPIRED: 'Expired',
+  REVIEW: 'Ready for review', COMPLETED: 'Paid', REFUNDED: 'Refunded', CANCELLED: 'Cancelled', PARTIAL: 'Partially paid', DENIED: 'Denied',
+  DECLINED: 'Declined', VOIDED: 'Cancelled', READY: 'Ready for review', AWAITING_APPROVAL: 'Waiting for approval',
   RESERVED: 'Reserved', ACTIVE: 'Active', CONSUMED: 'Consumed', RELEASED: 'Released',
 };
 

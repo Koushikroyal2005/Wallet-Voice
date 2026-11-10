@@ -47,12 +47,14 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     history=conversation_history(db,conversation,settings().voice_history_max_turns)
     ident=conversation.id;version=conversation.updated_at
     state=SimpleNamespace(selected_payment_id=conversation.selected_payment_id,context=copy.deepcopy(conversation.context or {}))
+    from .batch_voice import status_intent
+    factual=status_intent(db,text,state)
     previous_batch_id=state.context.get('batch_id')
     db.commit()
     from .batch_voice import interpret,prepare
     from .voice import Intent
     batch_args=interpret(text,state.context)
-    intent=Intent('prepare_payment_batch',batch_args,provider='context-resolver') if batch_args else contextual_intent(text,state)
+    intent=Intent('prepare_payment_batch',batch_args,provider='context-resolver') if batch_args else factual or contextual_intent(text,state)
     if intent is None:
         intent=await intent_provider(text,history)
     row=db.scalar(select(Conversation).where(Conversation.id==ident).with_for_update().execution_options(populate_existing=True))
@@ -66,6 +68,7 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     outcome=prepare(db,intent.args,state.context) if intent.tool=='prepare_payment_batch' else execute_tool(db,intent)
     preview=outcome.get('preview');response=outcome.get('response') or 'Please clarify your request.'
     context=dict(row.context or {})
+    if intent.tool=='get_payment_details' and intent.args.get('payment_id'):row.selected_payment_id=intent.args['payment_id']
     if preview and preview.get('batch_id'):context['batch_id']=preview['batch_id']
     if text.strip().lower().rstrip('.!?') in {'cancel','stop','no'}:
         from .batch_voice import retire
@@ -94,12 +97,18 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     return result
 def create_draft(db:Session,amount:int,recipient:Recipient|None=None,merchant:str|None=None,note:str|None=None)->PaymentIntent:
     row=PaymentIntent(amount=amount,recipient_id=recipient.id if recipient else None,merchant=merchant,note=note,status="DRAFT");db.add(row);db.flush();return row
-def mandate_for(db:Session,merchant:str,amount:int)->SpendingMandate|None:
-    now=datetime.now(timezone.utc);today=now.astimezone(ZoneInfo(settings().app_timezone)).date().isoformat();row=db.scalar(select(SpendingMandate).where(SpendingMandate.merchant==merchant,SpendingMandate.status=="ACTIVE",SpendingMandate.expires_at>now,SpendingMandate.max_amount>=amount).order_by(SpendingMandate.created_at.desc()).with_for_update())
+def mandate_for(db:Session,merchant:str,amount:int,lock=True)->SpendingMandate|None:
+    now=datetime.now(timezone.utc);today=now.astimezone(ZoneInfo(settings().app_timezone)).date().isoformat()
+    query=select(SpendingMandate).where(SpendingMandate.merchant==merchant,SpendingMandate.user_id=='demo-user',SpendingMandate.status=='ACTIVE',SpendingMandate.expires_at>now,SpendingMandate.max_amount>=amount).order_by(SpendingMandate.created_at.desc())
+    row=db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
     if not row:return None
+    from .models import AuthorizationChallenge
+    expected={'merchant':merchant,'daily_limit':row.daily_limit,'expires_at':int(row.expires_at.replace(tzinfo=row.expires_at.tzinfo or timezone.utc).timestamp())}
+    approvals=db.scalars(select(AuthorizationChallenge).where(AuthorizationChallenge.action=='MANDATE',AuthorizationChallenge.resource_id==merchant,AuthorizationChallenge.amount==row.max_amount,AuthorizationChallenge.status=='CONSUMED',AuthorizationChallenge.user_id==row.user_id)).all()
+    if not any(approval.details==expected for approval in approvals):return None
     context=row.context or {}
     spent=row.spent_today if context.get("usage_date")==today else 0
     if spent+amount>row.daily_limit:return None
-    if context.get("usage_date")!=today:row.spent_today=0;row.context={**context,"usage_date":today}
+    if lock and context.get("usage_date")!=today:row.spent_today=0;row.context={**context,"usage_date":today}
     return row
 def serialize_intent(row:PaymentIntent):return {"id":row.id,"kind":row.kind,"recipient_id":row.recipient_id,"merchant":row.merchant,"amount":row.amount,"currency":row.currency,"note":row.note,"source":row.source,"status":row.status,"version":row.version,"execute_after":row.execute_after,"expires_at":row.expires_at,"payment_request_id":row.payment_request_id}

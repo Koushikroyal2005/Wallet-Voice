@@ -143,3 +143,8 @@ node scripts/verify-v1.mjs
 ```
 
 `verify-v1.mjs` deliberately starts a new SQLite file named `v1-browser-*` in a temporary folder and refuses any existing DB. It uses synthetic PIN/configuration, disables providers and never loads private `.env`. The fixture remains in the temp folder for inspection.
+# V2 verification
+
+See [the V2 execution record](V2_IMPLEMENTATION.md#verification-2026-11-10) for actual results and resolved harness failures. Run the new local browser journey from `frontend` with `node scripts/verify-v2.mjs`. It starts a fresh isolated SQLite backend, verifies an actual process restart, uses real merchant and financial HTTP routes, and never loads private `.env` credentials. It also opens both local merchant servers at test-only ports. This is not live NVIDIA/PayPal evidence.
+
+The full backend test-image run also needs the public root `.env.example` mounted at `/.env.example` because an existing configuration test resolves that path from `/app/tests`. Do not mount private `.env`. Financial integration tests still require the dedicated `aiwallet_test@test-db` database and create fresh per-test schemas; never substitute a development URL.

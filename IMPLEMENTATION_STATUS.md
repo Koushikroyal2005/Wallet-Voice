@@ -105,3 +105,6 @@ The demo provider is the only route that can mark a simulated transfer/payment c
 # V1 implementation — 10 November 2026
 
 Implemented exact persisted batch reviews, immutable snapshots/hash, per-batch PIN approval, single-wallet approval, atomic reservations/idempotent settlement, individual results/receipts, aggregate ₹1 lakh wallet credit ceiling, automatic voice conversation, durable reminder queue/preferences and optional standards-based push. Current verification and manual limits are recorded in [docs/TESTING.md](docs/TESTING.md) and [docs/V1_IMPLEMENTATION.md](docs/V1_IMPLEMENTATION.md). No private credentials were read, no development database reset, and no commit/push performed for this task. Live provider/OS notification journeys are not claimed verified.
+# V2 implementation update — 2026-11-10
+
+Core authenticated merchant-to-wallet journey and V1.1 corrections implemented; no commit/push. See [V2 checklist, changed files and measured results](docs/V2_IMPLEMENTATION.md). Merchant provisioning, immutable checkout ingestion, PIN-bound batch settlement, polling and separate fulfillment are local simulations. Live NVIDIA, OS notifications and PayPal buyer journey were not exercised in this phase. Development Docker images require the owner's normal rebuild.
