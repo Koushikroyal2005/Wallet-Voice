@@ -36,7 +36,7 @@ export function PaymentBatchReview({ batchId, onChanged, onCancel }: { batchId: 
       <ul className="batch-items">{batch.items.map((item: any) => <li key={item.id}>
         <div><strong>{item.merchant}</strong><b>{money(item.amount)}</b></div>
         <p>{item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'No deadline'} · {item.currency}</p>
-        <small>{item.verified ? item.provider?.startsWith('MERCHANT:') ? 'Authenticated demo merchant · Simulated checkout' : 'Marked verified in this app' : 'Unrecognized business — check independently'}</small>
+        <small>{item.current_identity && !['ACTIVE','LEGACY'].includes(item.current_identity) ? item.receipt ? 'Merchant identity changed after review. This receipt records the prior settlement.' : 'Merchant identity is no longer valid. Payment is blocked.' : item.verified ? item.provider?.startsWith('MERCHANT:') ? 'Authenticated local demo merchant · Simulated checkout' : 'Marked verified in this app' : 'Unrecognized business — check independently'}</small>
         {item.merchant_id && <small>Merchant identity: {item.merchant_id}</small>}
         {!item.verified && batch.status === 'REVIEW' && <button className="secondary" disabled={busy || item.acknowledged} onClick={async () => {
           setBusy(true);

@@ -47,13 +47,13 @@ def test_payment_memory_independent_of_alerts_and_nonfinancial_controls(client,f
 def test_attention_priorities_expiry_and_reenable_no_duplicate(client,factory):
     h=merchants(factory)[0];ident=order(client,h)
     with factory() as db:
-        schedule(db);db.commit();assert db.scalar(select(func.count()).select_from(PaymentReminder))==2
+        schedule(db);db.commit();assert db.scalar(select(func.count()).select_from(PaymentReminder))==1
     for enabled in [False,True,False,True]:
         client.patch('/api/notifications/preferences',json={'enabled':enabled})
         with factory() as db:schedule(db);db.commit()
     assert client.get('/api/notifications').json()['items'][0]['stage']=='URGENT'
     with factory() as db:
-        assert db.scalar(select(func.count()).select_from(PaymentReminder))==2
+        assert db.scalar(select(func.count()).select_from(PaymentReminder))==1
         p=db.get(PaymentRequest,ident);p.expires_at=datetime.now(timezone.utc)-timedelta(seconds=1);db.commit()
     assert client.get('/api/notifications').json()['items'][0]['stage']=='EXPIRED'
     b=client.post('/api/payment-batches',json={'payment_ids':[ident]}).json();assert not b['can_authorize']
@@ -64,13 +64,13 @@ def test_stable_mandate_rejects_identity_mismatch_revocation_and_rename(client,f
         p=db.get(PaymentRequest,ident)
         # Same display name, wrong ID: no automatic authority.
         p.trace={**p.trace,'merchant_id':'different'}
-        with pytest.raises(FinancialError,match='MANDATE_REQUIRED'):reserve(db,p,'wrong-id','auto')
+        with pytest.raises(FinancialError,match='MERCHANT_IDENTITY_UNAVAILABLE'):reserve(db,p,'wrong-id','auto')
         p.trace={**p.trace,'merchant_id':'rail'};db.get(MerchantIdentity,'rail').active=False;db.flush()
-        with pytest.raises(FinancialError,match='MANDATE_REQUIRED'):reserve(db,p,'revoked-id','auto')
+        with pytest.raises(FinancialError,match='MERCHANT_IDENTITY_UNAVAILABLE'):reserve(db,p,'revoked-id','auto')
         identity=db.get(MerchantIdentity,'rail');identity.active=True;identity.name='Renamed Railway';db.flush()
-        with pytest.raises(FinancialError,match='MANDATE_REQUIRED'):reserve(db,p,'renamed-id','auto')
+        with pytest.raises(FinancialError,match='MERCHANT_IDENTITY_UNAVAILABLE'):reserve(db,p,'renamed-id','auto')
         db.add(MerchantIdentity(id='collision',name='Demo Railway',secret_hash='0'*64));p.trace={**p.trace,'merchant_id':'collision'};p.provider='MERCHANT:collision';db.flush()
-        with pytest.raises(FinancialError,match='MANDATE_REQUIRED'):reserve(db,p,'name-collision','auto')
+        with pytest.raises(FinancialError,match='MERCHANT_IDENTITY_UNAVAILABLE'):reserve(db,p,'name-collision','auto')
 
 def test_identity_bound_mandate_and_replayed_approval(client,factory):
     h=merchants(factory)[0];ident=order(client,h);mandate=grant(client,factory)

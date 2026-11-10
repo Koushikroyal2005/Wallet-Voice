@@ -149,7 +149,25 @@ See [the V2 execution record](V2_IMPLEMENTATION.md#verification-2026-11-10) for 
 
 The full backend test-image run also needs the public root `.env.example` mounted at `/.env.example` because an existing configuration test resolves that path from `/app/tests`. Do not mount private `.env`. Financial integration tests still require the dedicated `aiwallet_test@test-db` database and create fresh per-test schemas; never substitute a development URL.
 
-## V3 verification
+## Final V1–V3 quality verification
+
+Use [FINAL_REVIEW.md](FINAL_REVIEW.md) for this pass's measured results and failed/retried harness checks. `tests/test_final_review.py` exercises actual persisted reminder occurrences and revoked merchant identities; `tests/integration/test_final_review_postgres.py` reruns reminder/trust cases in fresh dedicated PostgreSQL schemas and adds concurrent identical snooze submissions. These use fake push delivery, not OS notifications. Voice browser verification additionally checks synthetic short pauses and patient-listening long silence.
+
+Observed: the full Linux CI-equivalent passed **288 tests, zero failed/skipped**, including 50 isolated PostgreSQL integration cases. After expanding the legacy migration fixture, a separate overlapping PostgreSQL run passed **18 tests**, including both migration variants and final reminder/trust cases. All seven browser scripts, TypeScript/Vite build, compilation, Compose validation and diff whitespace checks passed. One upstream Starlette/httpx test-client deprecation warning remains. Live provider/device tests and GitHub-hosted execution were not run; no fixture result substitutes for that evidence.
+
+The safe integration command remains:
+
+```powershell
+docker compose -p walletvoice-final-tests -f docker-compose.yml -f docker-compose.test.yml --profile test up --build --abort-on-container-exit --exit-code-from test test
+# Stop only this isolated project afterwards. Never delete development volumes.
+docker compose -p walletvoice-final-tests -f docker-compose.yml -f docker-compose.test.yml --profile test stop
+```
+
+The clean Linux CI equivalent runs from backend: `python -m compileall -q app scripts && python -m alembic upgrade head && python -m pytest -q`, with BOTH database URLs set to the dedicated `aiwallet_test@test-db`, providers disabled, login disabled only for that isolated test process, and a synthetic demo PIN. Do not point this at development. A full test-image run requires only the public `.env.example` at `/.env.example`; never mount private credentials. Normal Compose integration runs only `tests/integration` and does not need that extra configuration-test mount.
+
+Frontend commands, run separately so failures are visible: `npm.cmd run build`, `node scripts/verify-product.mjs`, `node scripts/verify-guardian.mjs`, `node scripts/verify-voice.mjs`, `node scripts/verify-paypal.mjs`, `node scripts/verify-v1.mjs`, `node scripts/verify-v2.mjs`, `node scripts/verify-v3.mjs`.
+
+## V3 verification (earlier pass)
 
 See [the V3 execution record](V3_IMPLEMENTATION.md) for current results and limits. The full measured backend run passed 251 tests with one optional Web Push adapter skip. The expanded isolated PostgreSQL suite passed 34 tests. Final affected snapshot/identity checks and browser results are recorded in that execution record rather than silently combined into a fictitious single run.
 

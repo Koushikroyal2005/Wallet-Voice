@@ -131,7 +131,7 @@ def test_reminders_deduplicate_and_stop_after_payment(factory):
     ids=requests(factory)
     with factory() as db:
         schedule(db);db.commit();schedule(db);db.commit()
-        assert db.scalar(select(func.count(PaymentReminder.id)))==6
+        assert db.scalar(select(func.count(PaymentReminder.id)))==3
         db.get(PaymentRequest,ids[0]).status='SUCCEEDED';db.commit();schedule(db);db.commit()
         assert all(p['payment_id']!=ids[0] for p in attention(db)['items'])
         assert all(r.status=='CANCELLED' for r in db.scalars(select(PaymentReminder).where(PaymentReminder.payment_request_id==ids[0])))

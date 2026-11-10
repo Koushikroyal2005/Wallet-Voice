@@ -9,11 +9,12 @@ let browser;
 try {
   for(let n=0;n<100;n++){try{await fetch('http://127.0.0.1:5191');break;}catch{await new Promise(r=>setTimeout(r,100));}}
   browser=await chromium.launch({headless:true});
-  for(const scenario of ['review','close-upload','switch-upload','close-listening','auto-send-opt-in','retry','interrupt-playback']) {
+  for(const scenario of ['review','close-upload','switch-upload','close-listening','auto-send-opt-in','retry','interrupt-playback','short-pause','long-pause']) {
     const page=await browser.newPage();const requests=[];const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript((scenario)=>{
       localStorage.setItem('wallet-review-transcript',scenario==='review'?'on':'off');
+      localStorage.setItem('wallet-patient-listening',String(scenario==='long-pause'));
       window.__voice={stops:0,spoken:0};
       window.EventSource=class{close(){}};
       window.speechSynthesis.speak=()=>{window.__voice.spoken++;};
@@ -26,7 +27,11 @@ try {
       };
       window.AudioContext=class {
         resume(){return Promise.resolve();}close(){return Promise.resolve();}
-        createAnalyser(){return {fftSize:2048,getFloatTimeDomainData:array=>array.fill(0)};}
+        createAnalyser(){const began=performance.now();return {fftSize:2048,getFloatTimeDomainData:array=>{
+          const elapsed=performance.now()-began;
+          const speaking=scenario==='short-pause' && (elapsed<900 || elapsed>=1800 && elapsed<2700) || scenario==='long-pause' && elapsed<900;
+          array.fill(speaking?0.08:0);
+        }};}
         createMediaStreamSource(){return {connect(){}};}
       };
     },scenario);
@@ -64,6 +69,11 @@ try {
     if(!['retry','interrupt-playback'].includes(scenario)){
       await page.getByRole('button',{name:'Stop recording',exact:true}).waitFor();
       if(scenario==='close-listening')await page.keyboard.press('Escape');
+      else if(scenario.endsWith('-pause')) {
+        await page.waitForTimeout(scenario==='short-pause'?1500:2300);
+        assert.ok(await page.getByRole('button',{name:'Stop recording',exact:true}).isVisible(),'A within-turn pause must not end capture');
+        await page.getByRole('button',{name:'Confirm action',exact:true}).waitFor();
+      }
       else {
         await page.getByRole('button',{name:'Stop recording',exact:true}).click();
         if(scenario==='close-upload')await page.keyboard.press('Escape');
@@ -86,7 +96,7 @@ try {
         assert.equal(turns[0].body.conversation_id,turns[1].body.conversation_id);
       }
     }
-    if(['review','retry','interrupt-playback','auto-send-opt-in'].includes(scenario)){
+    if(['review','retry','interrupt-playback','auto-send-opt-in','short-pause','long-pause'].includes(scenario)){
       await page.getByRole('button',{name:'Confirm action',exact:true}).waitFor();
       await page.getByRole('region',{name:'Payment Guardian'}).getByText(/1,250\.50/).first().waitFor();
       assert.ok(await page.getByRole('button',{name:'Confirm action',exact:true}).isDisabled(),'Unknown business requires acknowledgement');
@@ -110,5 +120,5 @@ try {
     assert.deepEqual(errors,[]);
     await page.close();
   }
-  console.log('PASSED: 7 voice fixture journeys: transcript review, close/switch during transcription, close while listening, opt-in auto-send, retry deduplication, interrupted playback; no payments executed');
+  console.log('PASSED: 9 voice fixture journeys: transcript review, close/switch during transcription, close while listening, opt-in auto-send, retry deduplication, interrupted playback, short pause continuity and longer patient-listening silence detection; synthetic audio only, no payments executed');
 } finally {if(browser)await browser.close();server.kill();}

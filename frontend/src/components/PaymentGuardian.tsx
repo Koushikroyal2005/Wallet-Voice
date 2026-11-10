@@ -6,6 +6,7 @@ import { paymentStatus } from '../lib/formatting';
 
 const amount = (value: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value / 100);
 const reasons: Record<string, string> = {
+  MERCHANT_IDENTITY_UNAVAILABLE: 'This merchant identity is no longer valid. Payment is blocked; contact the merchant.',
   USER_HELD: 'You put this request on hold. Release it in Payments before paying.',
   EXPIRED: 'The payment deadline has passed.', ALREADY_PAID: 'This request has already been paid.',
   NOT_PAYABLE: 'This request cannot accept another payment in its current state.',
@@ -72,7 +73,8 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
   const approved = processing || done || paypal && review.paypal?.status === 'APPROVED';
   const held = p.explicit_hold;
   const failed = ['FAILED', 'DENIED', 'DECLINED', 'VOIDED', 'REFUNDED'].includes(status);
-  const allowed = !expired && !held && !processing && !done && !locked && (!paypal ? decision.decision === 'ELIGIBLE' && p.currency === review.wallet_currency : p.status === 'PENDING' && (p.verified || recognized));
+  const identityValid = review.merchant_identity?.payable !== false;
+  const allowed = identityValid && !expired && !held && !processing && !done && !locked && (!paypal ? decision.decision === 'ELIGIBLE' && p.currency === review.wallet_currency : p.status === 'PENDING' && (p.verified || recognized));
   const title = status === 'REFUNDED' ? 'Payment refunded' : done ? 'Payment completed' : processing ? 'Waiting for confirmation' : held ? 'Payment on hold' : expired && !locked ? 'Payment expired' : failed ? 'Payment did not complete' : 'Review your payment';
   return <section className="payment-guardian" aria-label="Payment Guardian">
     <span className="eyebrow">PAYMENT GUARDIAN</span><h3 tabIndex={-1}>{title}</h3>
@@ -82,6 +84,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
       <div><dt>Deadline</dt><dd>{p.expires_at ? new Date(p.expires_at).toLocaleString() : 'No deadline supplied'}</dd></div>
       <div><dt>Verification</dt><dd>{p.verified ? 'Marked verified in this app’s merchant record' : 'Unrecognized business — check independently'}{p.provider?.includes('DEMO') ? ' · Demo merchant' : ''}</dd></div>
     </dl>
+    {!identityValid && <p role="alert">Merchant identity is no longer valid. Recognition or a PIN cannot override this block. Completed receipts remain historical records.</p>}
     {review.merchant_order && <div className="guardian-rules"><strong>Simulated merchant order · {review.merchant_order.merchant_order_reference}</strong><p>Payment: {paymentStatus(review.merchant_order.payment_status)}. {review.merchant_order.fulfilled_at ? 'Merchant marked this order fulfilled.' : 'Fulfillment has not been confirmed by the merchant. A payment receipt does not confirm a booking or delivery.'}</p></div>}
     <label>Payment source<select aria-label="Payment source" value={actualSource} disabled={busy || locked || expired || held} onChange={e => { setSource(e.target.value); setRecognized(false); setError(''); }}><option value="AI_WALLET">Demo wallet</option>{p.category !== 'person_to_person' && <option value="PAYPAL_SANDBOX">PayPal Sandbox</option>}</select></label>
     <div className="guardian-rules"><strong>{paypal ? 'PayPal approval' : 'Why this wallet decision?'}</strong>

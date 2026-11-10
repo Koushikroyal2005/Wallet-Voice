@@ -130,6 +130,7 @@ class PaymentReminder(Base):
     status: Mapped[str]=mapped_column(String,default='PENDING')
     attempts: Mapped[int]=mapped_column(Integer,default=0)
     deliveries: Mapped[dict]=mapped_column(JSON,default=dict)
+    delivered_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     next_attempt_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
     created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 

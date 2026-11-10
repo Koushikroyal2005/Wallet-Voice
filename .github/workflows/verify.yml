@@ -28,7 +28,7 @@ jobs:
       - run: apt-get update && apt-get install -y ffmpeg
       - run: pip install -r backend/requirements.txt
       - working-directory: backend
-        run: python -m compileall -q app scripts && alembic upgrade head && python -m pytest -q
+        run: python -m compileall -q app scripts && python -m alembic upgrade head && python -m pytest -q
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -44,3 +44,9 @@ jobs:
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
         run: node scripts/verify-product.mjs && node scripts/verify-guardian.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - working-directory: frontend
+        run: node scripts/verify-v3.mjs

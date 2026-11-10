@@ -28,6 +28,16 @@ try{
   await page.goto('http://127.0.0.1:5198');await page.locator('input[type=password]').fill('123456');await page.getByRole('button',{name:'Unlock wallet',exact:true}).click();await page.getByRole('button',{name:'Talk to your wallet',exact:true}).waitFor();
   await call('/api/notifications/preferences',{enabled:false},'PATCH');await page.reload();
   const attention=page.getByRole('region',{name:'Payment reminders'});await attention.getByText('Demo Railway',{exact:true}).waitFor();await attention.getByText('Alerts are off. Your saved payments are still here.').waitFor();
+  await page.getByText('2 urgent requests',{exact:true}).waitFor();
+  await attention.locator('article').filter({hasText:'Demo Railway'}).getByRole('button',{name:'Dismiss',exact:true}).click();
+  await page.getByText('1 urgent request',{exact:true}).waitFor();
+  await page.locator('.insight-card').getByText('Demo Kitchen',{exact:true}).waitFor();
+  await page.getByRole('navigation').getByRole('button',{name:'Payments',exact:true}).click();
+  await page.locator('.payment-list').getByText('Demo Railway',{exact:true}).first().waitFor();
+  await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+  await attention.getByText('Hidden from attention (1)',{exact:true}).click();
+  await attention.getByRole('button',{name:'Restore',exact:true}).click();
+  await page.getByText('2 urgent requests',{exact:true}).waitFor();
   await page.screenshot({path:join(output,'forgotten-checkout-390.png')});
   await page.getByRole('button',{name:'Talk to your wallet',exact:true}).click();await page.getByRole('button',{name:'Stop recording',exact:true}).click();
   const session=page.getByRole('region',{name:'Wallet conversation'});const review=session.getByRole('region',{name:'Exact payment review'});await review.getByText('Demo Kitchen',{exact:true}).waitFor();

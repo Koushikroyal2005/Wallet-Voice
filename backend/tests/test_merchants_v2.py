@@ -81,7 +81,7 @@ def test_reenable_reminders_preserves_delivery_and_stops_paid(factory):
         schedule(db);prefs=preferences(db);prefs.enabled=False;schedule(db)
         rows=list(db.scalars(select(PaymentReminder)));assert all(r.status=='CANCELLED' for r in rows)
         rows[0].deliveries={'device':True};prefs.enabled=True;schedule(db);schedule(db)
-        assert len(list(db.scalars(select(PaymentReminder))))==2
+        assert len(list(db.scalars(select(PaymentReminder))))==1
         assert all(r.status=='PENDING' for r in rows) and rows[0].deliveries=={'device':True}
         p.status='SUCCEEDED';schedule(db);assert all(r.status=='CANCELLED' for r in rows)
 
@@ -134,7 +134,9 @@ def test_order_questions_and_remind_later_use_backend_facts(client,factory):
     assert not snoozed['action_preview'] and 'no payment was authorized' in snoozed['response']
     with factory() as db:
         assert db.get(PaymentRequest,created['payment_request_id']).status=='PENDING'
-        assert db.scalar(select(func.count()).select_from(PaymentReminder))==2
+        rows=list(db.scalars(select(PaymentReminder)))
+        assert len(rows)==2  # Cancelled automatic alert plus the explicit occurrence.
+        assert len([r for r in rows if r.status=='PENDING' and r.stage.startswith('SNOOZE:')])==1
 
 def test_public_legacy_placeholder_cannot_impersonate_merchant(client,monkeypatch):
     from app.core import settings

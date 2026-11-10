@@ -215,13 +215,12 @@ function WalletApp() {
     if (payment) { setReview(payment); window.history.replaceState({}, '', window.location.pathname); }
   }, [payments.data]);
   const pending = items.filter(openPayment);
-  const attention = pending
-    .filter((p) => !p.explicit_hold)
-    .sort(
-      (a, b) =>
-        (a.expires_at ? Date.parse(a.expires_at) : Infinity) -
-        (b.expires_at ? Date.parse(b.expires_at) : Infinity),
-    );
+  const attentionQuery = useQuery({queryKey: ['attention'], queryFn: () => api('/api/notifications')});
+  const attention: Payment[] = (attentionQuery.data?.items || []).flatMap((entry: any) => {
+    const payment = items.find(p => p.id === entry.payment_id);
+    return payment && openPayment(payment) && !entry.explicit_hold && entry.stage !== 'EXPIRED'
+      ? [{...payment, trace: {...payment.trace, urgency: entry.stage}}] : [];
+  });
   const reviewPayment = (payment: Payment) => {
     setReview(payment);
     setFailure("");
@@ -462,7 +461,9 @@ function WalletApp() {
                   <p><ShieldCheck size={15}/> Your voice prepares. You approve the payment.</p>
                 </div>
                 <div id="voice-home-session" className="voice-home-session"/>
+                {(attentionQuery.isPending || attentionQuery.isError) ? <div className="hero-urgent" role="status"><p>{attentionQuery.isPending ? 'Checking payment deadlines…' : 'Deadline attention is unavailable. Open Payments or retry below.'}</p></div> : (
                 <div className="hero-urgent"><span className="round-icon"><Clock3 size={20}/></span><div><strong>{attention.filter(p => p.trace?.urgency === 'URGENT').length} urgent {attention.filter(p => p.trace?.urgency === 'URGENT').length === 1 ? 'request' : 'requests'}</strong><p>{attention.some(p => p.trace?.urgency === 'URGENT') ? 'A deadline is approaching. Take a look before you decide.' : 'No urgent requests right now. Review the rest at your pace.'}</p></div><button className="text-button" onClick={() => setTab('payments')}>View inbox <ArrowUpRight size={16}/></button></div>
+                )}
               </section>
               <aside className="overview-column">
                 <section className="insight-card">
@@ -471,12 +472,12 @@ function WalletApp() {
                   </span>
                   <span className="eyebrow">NEXT PAYMENT TO REVIEW</span>
                   <h3>
-                    {attention[0]?.merchant || "A little breathing room."}
+                    {attentionQuery.isPending ? 'Checking saved payments…' : attentionQuery.isError ? 'Attention unavailable' : attention[0]?.merchant || "A little breathing room."}
                   </h3>
                   <p>
                     {attention[0]
                       ? `${money(attention[0].amount)} · ${due(attention[0])}`
-                      : "No payments need your attention right now."}
+                      : attentionQuery.isError ? 'Open Payments to view your requests, or retry below.' : attentionQuery.isPending ? 'Your saved requests are loading.' : "No payments need your attention right now."}
                   </p>
                   {attention[0] && (
                     <button
@@ -494,7 +495,7 @@ function WalletApp() {
                 <div>
                   <h2>
                     Payments to review{" "}
-                    <span className="count">{pending.length}</span>
+                    <span className="count">{attention.length}</span>
                   </h2>
                   <p>Check the amount and payment method before you pay.</p>
                 </div>
@@ -506,8 +507,10 @@ function WalletApp() {
                 </button>
               </div>
               <div className="payment-list">
-                {payments.isPending ? (
+                {payments.isPending || attentionQuery.isPending ? (
                   <div className="skeleton">Loading your payments…</div>
+                ) : attentionQuery.isError ? (
+                  <p role="alert">Could not load Home attention. Your requests remain in Payments.</p>
                 ) : (
                   paymentRows(attention.slice(0, 3))
                 )}

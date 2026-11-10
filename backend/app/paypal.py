@@ -69,6 +69,8 @@ async def create_order(db:Session,payment_id:str):
     existing=db.scalar(select(PayPalOrder).where(PayPalOrder.payment_request_id==p.id).order_by(PayPalOrder.created_at.desc()))
     if existing:
         result=serialise(existing);db.rollback();return result
+    from .merchant_trust import current_identity
+    if not current_identity(db,p,True)['payable']:raise PayPalError('Merchant identity is unavailable; prepare a fresh review')
     if p.status=="SUCCEEDED":raise PayPalError("Payment request is already paid")
     if p.explicit_hold:raise PayPalError("Payment request is on hold")
     if not snapshot and p.expires_at and utc(p.expires_at)<=datetime.now(timezone.utc):raise PayPalError("Payment request has expired")
@@ -115,6 +117,14 @@ async def capture_order(db:Session,order_id:str):
     if order.provider_status in {"COMPLETED","REFUNDED","DENIED","DECLINED","FAILED"}:
         result=serialise(order);db.rollback();return result
     if order.provider_status=="PENDING":return await refresh_order(db,order_id)
+    from .merchant_trust import current_identity
+    if not current_identity(db,db.get(PaymentRequest,order.payment_request_id))['payable']:
+        db.rollback()
+        # Existing provider evidence must still be recorded, but never submit a
+        # new capture for a merchant whose authority is no longer valid.
+        result=await refresh_order(db,order_id)
+        if result['status'] in {'COMPLETED','PENDING','DENIED','DECLINED','FAILED','REFUNDED'}:return result
+        raise PayPalError('Merchant identity is unavailable; new capture is blocked')
     capture_key=f"paypal-capture:{order.id}";db.rollback()
     try:remote=await request("POST",f"/v2/checkout/orders/{order_id}/capture",payload={},request_id=capture_key)
     except PayPalError as error:

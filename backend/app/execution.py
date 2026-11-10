@@ -16,6 +16,9 @@ def execute_attempt(attempt_id):
             db.expunge(attempt)
             return attempt
         payment = db.get(PaymentRequest, attempt.payment_request_id)
+        from .merchant_trust import current_identity
+        if not current_identity(db,payment)['payable']:
+            result=finalize(db,attempt_id,False,'','MERCHANT_IDENTITY_UNAVAILABLE');db.commit();db.refresh(result);db.expunge(result);return result
         if attempt.idempotency_key.startswith('auto:'):
             mandate=db.get(SpendingMandate,(payment.trace or {}).get('mandate_id')) if (payment.trace or {}).get('mandate_id') else None
             from .mandate_authority import valid_existing

@@ -1,13 +1,23 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, post } from '../lib/api';
 import { money } from '../lib/formatting';
 
 export function AttentionQueue({ onReview }: { onReview: (id: string) => void }) {
-  const { data, refetch } = useQuery({ queryKey: ['attention'], queryFn: () => api('/api/notifications') });
+  const { data, refetch, isPending, isError } = useQuery({ queryKey: ['attention'], queryFn: () => api('/api/notifications') });
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  async function attentionAction(id:string,action:'SNOOZE'|'DISMISS'|'RESTORE') {try{await post(`/api/notifications/attention/${id}`,{action,minutes:5});await refetch();setMessage(action==='SNOOZE'?'Reminder paused for up to five minutes. Payment deadline is unchanged.':action==='DISMISS'?'Hidden from attention. The request remains in Payments.':'Restored to attention.');}catch(e){setMessage((e as Error).message);}}
+  const inFlight = useRef(false);
+  async function attentionAction(id:string,action:'SNOOZE'|'DISMISS'|'RESTORE') {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true);
+    try {
+      await post(`/api/notifications/attention/${id}`,{action,minutes:5,request_id:crypto.randomUUID()});
+      await refetch();
+      setMessage(action==='SNOOZE'?'Reminder saved for up to five minutes from now. Alerts must be enabled; quiet hours and the original deadline still apply.':action==='DISMISS'?'Hidden from Home attention. The request remains in Payments.':'Restored to Home attention.');
+    } catch(e) { setMessage((e as Error).message); }
+    finally { inFlight.current = false; setBusy(false); }
+  }
   async function enable() {
     setBusy(true);
     try {
@@ -27,6 +37,8 @@ export function AttentionQueue({ onReview }: { onReview: (id: string) => void })
   }
   return <section className="attention-queue surface" aria-label="Payment reminders">
     <div><span className="eyebrow">NEEDS YOUR ATTENTION</span><h2>Remembered for you</h2></div>
+    {isPending && <p role="status">Loading saved payments…</p>}
+    {isError && <p role="alert">Saved payments could not be loaded. <button className="text-button" onClick={() => void refetch()}>Try again</button></p>}
     {!data?.preferences?.enabled && <p>Alerts are off. Your saved payments are still here.</p>}
     {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><small>{item.stage === 'EXPIRED' ? 'Expired checkout' : item.stage === 'URGENT' ? 'Expiring soon' : item.stage === 'DUE_SOON' ? 'Due soon' : item.stage === 'SAVED_CHECKOUT' ? 'Saved merchant checkout · Simulated' : 'Saved payment'}</small><p>{money(item.amount)} · {item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'Saved for review'}</p>{item.snoozed_until && <small>Reminder paused until {new Date(item.snoozed_until).toLocaleTimeString()}</small>}</div><div className="attention-actions"><button className="secondary" onClick={() => onReview(item.payment_id)}>{item.stage === 'EXPIRED' ? 'View details' : 'Review now'}</button>{item.stage!=='EXPIRED' && !item.explicit_hold && <button className="text-button" onClick={()=>void attentionAction(item.payment_id,'SNOOZE')}>Remind in 5 min</button>}<button className="text-button" onClick={()=>void attentionAction(item.payment_id,'DISMISS')}>Dismiss</button></div></article>) : <p>No saved payments need attention. Your payment history stays in Payments.</p>}
     {!!data?.dismissed_items?.length && <details><summary>Hidden from attention ({data.dismissed_items.length})</summary>{data.dismissed_items.map((item:any)=><p key={item.payment_id}>{item.merchant} <button className="text-button" onClick={()=>void attentionAction(item.payment_id,'RESTORE')}>Restore</button></p>)}</details>}

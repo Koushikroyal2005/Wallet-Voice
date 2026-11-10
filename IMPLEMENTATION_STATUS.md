@@ -1,5 +1,11 @@
 # Implementation status
 
+## Final V1–V3 quality pass — 11 November 2026
+
+CI module invocation, coalesced deadline alerts, durable explicit snooze and current merchant-identity validation are implemented. Home uses shared backend attention data; dismissal is not cancellation. Revoked identities cannot start new internal dispatch or external capture, while reconciliation preserves confirmed provider evidence and historical receipts. No ledger rewrite, private credential edit, commit or push. See [FINAL_REVIEW.md](docs/FINAL_REVIEW.md) for the final measured matrix, file explanations, limitations and release gate; earlier dated results below are historical, not this pass's results.
+
+Measured: full Linux/isolated-PostgreSQL run **288 passed, zero skipped/failed**; subsequent expanded migration/reminder/trust regression **18 passed** (overlapping, not added to 288). Production build, compilation, Compose validation and all seven browser suites passed; Voice now includes nine synthetic scenarios. Dedicated backend test image built successfully. Live providers, physical devices, full application rebuild/startup and GitHub-hosted CI remain unexecuted. Verdict: **READY WITH LIMITATIONS for the labelled simulated local demo**.
+
 ## Guardian conversation reliability — 2026-11-10
 
 Grounded urgent-payment references, ambiguity/expiry checks, source memory, explanations, bounded assistant replay IDs and transaction-free model inference are implemented. AI prepares reviews only. Transcript review defaults on; spoken replies are opt-in. Closing/switching invalidates pending audio callbacks and stops microphone tracks. Provider labels distinguish NVIDIA inference, deterministic demo parsing, context resolution and speech fallback. Reviews preserve fractional rupees and require acknowledgement of unknown businesses.

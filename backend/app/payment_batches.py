@@ -7,10 +7,12 @@ from .models import PaymentBatch,PaymentBatchItem,PaymentRequest,PaymentAttempt,
 from .services import FinancialError,wallet,balances,policy,reserve,utc,settings_for,day_spend,emit
 from .authorization import create_challenge,verify_challenge,consume_approval,AuthorizationError
 
-def request_snapshot(p):
+def request_snapshot(db,p,lock=False):
+    from .merchant_trust import current_identity
+    identity=current_identity(db,p,lock)
     return {'id':p.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,
             'deadline':utc(p.expires_at).isoformat() if p.expires_at else None,
-            'verified':p.verified,'provider':p.provider,'merchant_id':(p.trace or {}).get('merchant_id'),'description':p.description}
+            'verified':identity['verified'],'identity_state':identity['state'],'provider':p.provider,'merchant_id':identity['merchant_id'],'description':p.description}
 
 def digest(snapshot):
     return hashlib.sha256(json.dumps(snapshot,sort_keys=True,separators=(',',':')).encode()).hexdigest()
@@ -22,7 +24,7 @@ def create_batch(db,ids,recognized=False,acknowledged_ids=None):
     for ident in ids:
         p=db.get(PaymentRequest,ident)
         if not p:raise FinancialError('A selected payment is unavailable')
-        rows.append(request_snapshot(p))
+        rows.append(request_snapshot(db,p))
     snapshot={'items':rows,'source':'AI_WALLET','recognized':recognized,'acknowledged_ids':sorted(acknowledged_ids or [])}
     batch=PaymentBatch(snapshot=snapshot,snapshot_hash=digest(snapshot),total=sum(p['amount'] for p in rows),expires_at=datetime.now(timezone.utc)+timedelta(minutes=5))
     db.add(batch);db.flush()
@@ -46,7 +48,7 @@ def check_snapshot(db,batch):
     if sorted(stored)!=sorted(x['id'] for x in batch.snapshot['items']):raise FinancialError('Review selection changed')
     for saved in batch.snapshot['items']:
         p=db.scalar(select(PaymentRequest).where(PaymentRequest.id==saved['id']).with_for_update().execution_options(populate_existing=True))
-        if not p or request_snapshot(p)!=saved:raise FinancialError('Payment details changed; prepare a fresh review')
+        if not p or request_snapshot(db,p,True)!=saved:raise FinancialError('Payment details or merchant identity changed; prepare a fresh review')
 
 def view(db,batch):
     w=wallet(db);balance=balances(db,w);remaining=balance['available_balance'];daily=day_spend(db,w);s=settings_for(db)
@@ -56,7 +58,8 @@ def view(db,batch):
         acknowledged=saved['id'] in batch.snapshot.get('acknowledged_ids',[])
         d=policy(db,p,'manual',batch.snapshot['recognized'] or acknowledged) if p else {'decision':'REJECTED','reason_codes':['UNAVAILABLE']}
         codes=list(d['reason_codes'])
-        if p and request_snapshot(p)!=saved:codes.append('DETAILS_CHANGED')
+        current=request_snapshot(db,p) if p else None
+        if p and current!=saved:codes.append('DETAILS_CHANGED')
         if d['decision']=='ELIGIBLE':
             if remaining-p.amount<s.minimum_balance:codes.append('BATCH_AVAILABLE_BALANCE')
             if daily+p.amount>s.daily_limit:codes.append('BATCH_DAILY_LIMIT')
@@ -65,7 +68,7 @@ def view(db,batch):
         a=db.get(PaymentAttempt,item.attempt_id) if item and item.attempt_id else None
         op=db.scalar(select(Operation).where(Operation.idempotency_key==f"payment:{saved['id']}"))
         j=db.scalar(select(JournalTransaction).where(JournalTransaction.operation_id==op.id)) if op else None
-        items.append({**saved,'acknowledged':acknowledged,'blocked':bool(codes),'reason_codes':codes,'status':a.status if a else p.status if p else 'UNAVAILABLE',
+        items.append({**saved,'current_identity':current['identity_state'] if current else 'MISSING','current_verified':current['verified'] if current else False,'acknowledged':acknowledged,'blocked':bool(codes),'reason_codes':codes,'status':a.status if a else p.status if p else 'UNAVAILABLE',
                       'attempt_id':a.id if a else None,'failure_reason':a.failure_reason if a else None,
                       'receipt':{'journal_id':j.id,'operation_id':op.id,'timestamp':utc(j.created_at).isoformat(),'status':a.status,'provider_reference':a.provider_reference} if j and a else None})
     states=[i['status'] for i in items]

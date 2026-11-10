@@ -34,6 +34,7 @@ try {
       let result={};let status=200;
       if(path==='/api/auth/session')result={authenticated:true,required:true};
       else if(path==='/api/wallet')result={posted_balance:1000000,reserved_amount:0,available_balance:1000000};
+      else if(path==='/api/notifications')result={items:[{payment_id:'ticket',merchant:'Indian Railways',amount:125000,stage:'URGENT'}],preferences:{enabled:false}};
       else if(path==='/api/payments')result=[{id:'ticket',merchant:'Indian Railways',description:'Ticket',category:'travel',amount:125000,status:'PENDING',verified:true,explicit_hold:false,trace:{urgency:'URGENT'}}];
       else if(path==='/api/payments/ticket/review')result=guardianFixture({id:'ticket',merchant:'Indian Railways',description:'Ticket',category:'travel',amount:125000,status:recordedOrder?.status==='COMPLETED'?'SUCCEEDED':recordedOrder?'PROCESSING':'PENDING',verified:true}, {paypal:recordedOrder});
       else if(path==='/api/paypal/config')result={configured:true,environment:'sandbox',client_id:'fixture-client-id',checkout_currency:'USD',demo_inr_per_usd:'84'};

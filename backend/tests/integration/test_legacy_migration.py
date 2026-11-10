@@ -5,7 +5,8 @@ from sqlalchemy import create_engine,text
 
 URL=os.getenv("TEST_DATABASE_URL")
 pytestmark=pytest.mark.skipif(not URL,reason="requires isolated PostgreSQL test database")
-def test_legacy_schema_migrates_to_balanced_journal():
+@pytest.mark.parametrize('prior_reminders',[False,True])
+def test_legacy_schema_migrates_to_balanced_journal(prior_reminders):
     from sqlalchemy.engine import make_url
     target=make_url(URL)
     if target.database!='aiwallet_test' or target.host!='test-db':pytest.fail('Legacy tests require isolated aiwallet_test@test-db')
@@ -24,6 +25,9 @@ def test_legacy_schema_migrates_to_balanced_journal():
             for op,kind,amount,ref,debit,credit in rows:
                 c.execute(text("INSERT INTO operations VALUES (:id,:kind,:amount,'SUCCEEDED',:ref,:key,CURRENT_TIMESTAMP)"),{"id":op,"kind":kind,"amount":amount,"ref":ref,"key":op});c.execute(text("INSERT INTO ledger_entries VALUES (:id,'wallet-1',:op,:debit,:credit,:amount,'INR',CURRENT_TIMESTAMP)"),{"id":f"entry-{op}","op":op,"debit":debit,"credit":credit,"amount":amount})
             for ident,status in [('pending','PENDING'),('held','HELD'),('expired','EXPIRED')]:c.execute(text("INSERT INTO payment_requests VALUES (:id,:merchant,'travel','legacy',10000,'INR',CURRENT_TIMESTAMP,false,'DEMO_MERCHANT',:status,'{}',CURRENT_TIMESTAMP)"),{"id":ident,"merchant":ident,"status":status})
+            if prior_reminders:
+                c.execute(text("CREATE TABLE payment_reminders (id varchar PRIMARY KEY,payment_request_id varchar NOT NULL REFERENCES payment_requests(id),stage varchar NOT NULL,status varchar NOT NULL,attempts integer NOT NULL,deliveries json NOT NULL,next_attempt_at timestamptz NOT NULL,created_at timestamptz NOT NULL,UNIQUE(payment_request_id,stage))"))
+                c.execute(text("INSERT INTO payment_reminders VALUES ('old-reminder','pending','UPCOMING','SENT',1,CAST(:deliveries AS json),CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"),{'deliveries':'{"device":true}'})
         env={**os.environ,"DATABASE_URL":legacy_url};subprocess.run([sys.executable,"-m","alembic","-c","alembic.ini","upgrade","head"],check=True,env=env);subprocess.run([sys.executable,"-m","alembic","-c","alembic.ini","upgrade","head"],check=True,env=env)
         with engine.connect() as c:
             balance=c.scalar(text("SELECT COALESCE(SUM(CASE WHEN e.direction='CREDIT' THEN e.amount ELSE -e.amount END),0) FROM ledger_entries e JOIN ledger_accounts a ON a.id=e.ledger_account_id WHERE a.wallet_id='wallet-1'"));assert balance==500000
@@ -32,6 +36,9 @@ def test_legacy_schema_migrates_to_balanced_journal():
             assert c.scalar(text("SELECT count(*) FROM payment_reservations"))==0
             assert c.scalar(text("SELECT count(*) FROM (SELECT journal_transaction_id,SUM(CASE WHEN direction='DEBIT' THEN amount ELSE -amount END) AS balance FROM ledger_entries GROUP BY journal_transaction_id) b WHERE balance<>0"))==0
             assert c.scalar(text("SELECT count(*) FROM operations WHERE reference IN ('DEMO-TOPUP','DEMO-WITHDRAW','DEMO-PAY')"))==3
+            if prior_reminders:
+                row=c.execute(text("SELECT status,deliveries,delivered_at FROM payment_reminders WHERE id='old-reminder'")).one()
+                assert row.status=='SENT' and row.deliveries=={'device':True} and row.delivered_at is None
     finally:
         engine.dispose()
         # Retain the uniquely named disposable DB until the isolated tmpfs stops.

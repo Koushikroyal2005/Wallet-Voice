@@ -3,6 +3,7 @@ import json
 from datetime import datetime,timedelta,timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
+from uuid import uuid4
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from sqlalchemy import select
@@ -43,13 +44,23 @@ def schedule(db,now=None):
                 if row.status in {'PENDING','RETRY'}:row.status='CANCELLED'
             continue
         left=(utc(p.expires_at)-now).total_seconds()
-        for stage,threshold in [('UPCOMING',10800),('URGENT',900)]:
+        stage='URGENT' if left<=900 else 'UPCOMING' if left<=10800 else None
+        if stage=='URGENT':
             for old in rows:
-                if old.stage==stage and old.status=='CANCELLED' and left<=threshold:
-                    old.status='PENDING';old.next_attempt_at=max(now,utc(state.snoozed_until)) if state and state.snoozed_until else now;old.attempts=0
-            if left<=threshold and not any(r.stage==stage for r in rows):
-                row=PaymentReminder(payment_request_id=p.id,stage=stage,next_attempt_at=max(now,utc(state.snoozed_until)) if state and state.snoozed_until else now);db.add(row)
-                emit(db,'payment.reminder',{'payment_id':p.id,'stage':stage})
+                if old.stage=='UPCOMING' and old.status in {'PENDING','RETRY'}:old.status='CANCELLED'
+        # An explicit durable snooze occurrence replaces outstanding automatic alerts.
+        if any(r.stage.startswith('SNOOZE:') and r.status in {'PENDING','RETRY'} for r in rows):continue
+        delivered=[utc(r.delivered_at) for r in rows if r.delivered_at]
+        # A notification already sent in the urgent window covers this escalation.
+        if stage=='URGENT' and (any(t>=utc(p.expires_at)-timedelta(minutes=15) for t in delivered) or any(r.status=='SENT' and not r.delivered_at for r in rows)):continue
+        if stage is None:continue
+        next_at=max([now]+[t+timedelta(minutes=5) for t in delivered]+([utc(state.snoozed_until)] if state and state.snoozed_until else []))
+        if next_at>=utc(p.expires_at):continue
+        old=next((r for r in rows if r.stage==stage),None)
+        if old and old.status=='CANCELLED':old.status='PENDING';old.next_attempt_at=next_at;old.attempts=0
+        elif not old:
+            db.add(PaymentReminder(payment_request_id=p.id,stage=stage,next_attempt_at=next_at))
+            emit(db,'payment.reminder',{'payment_id':p.id,'stage':stage})
     db.flush()
 
 def deliver_one(factory,sender:NotificationProvider|None=None):
@@ -65,6 +76,12 @@ def deliver_one(factory,sender:NotificationProvider|None=None):
         if not row:return False
         p=db.scalar(select(PaymentRequest).where(PaymentRequest.id==row.payment_request_id).with_for_update())
         if not valid(p,now):row.status='CANCELLED';db.commit();return True
+        others=list(db.scalars(select(PaymentReminder).where(PaymentReminder.payment_request_id==p.id,PaymentReminder.id!=row.id)))
+        if row.stage=='UPCOMING' and utc(p.expires_at)-now<=timedelta(minutes=15):
+            row.status='CANCELLED';db.commit();return True
+        if row.stage in {'UPCOMING','URGENT'}:
+            if any(r.stage.startswith('SNOOZE:') and r.status in {'PENDING','RETRY'} for r in others) or row.stage=='URGENT' and any((r.delivered_at and utc(r.delivered_at)>=utc(p.expires_at)-timedelta(minutes=15)) or (r.status=='SENT' and not r.delivered_at) for r in others):
+                row.status='CANCELLED';db.commit();return True
         state=db.get(AttentionState,p.id)
         if state and state.dismissed:row.status='CANCELLED';db.commit();return True
         if state and state.snoozed_until and utc(state.snoozed_until)>now:
@@ -80,6 +97,7 @@ def deliver_one(factory,sender:NotificationProvider|None=None):
             try:
                 sender(subscription_info=subscription.subscription,data=json.dumps({'title':'A payment needs your attention','body':'Open Wallet-Voice to review it.','payment_id':p.id,'tag':row.id}),vapid_private_key=s.vapid_private_key,vapid_claims={'sub':s.vapid_subject},ttl=min(300,max(1,int((utc(p.expires_at)-now).total_seconds()))),timeout=5)
                 delivered[subscription.id]=True
+                row.delivered_at=now
             except Exception as e:
                 response=getattr(e,'response',None)
                 if response is not None and getattr(response,'status_code',None) in {404,410}:subscription.active=False
@@ -121,8 +139,9 @@ def attention(db=Depends(get_db)):
 class AttentionAction(BaseModel):
     action:str=Field(pattern='^(SNOOZE|DISMISS|RESTORE)$')
     minutes:int=Field(default=5,ge=1,le=60)
+    request_id:str|None=Field(default=None,min_length=8,max_length=80,pattern=r'^[a-zA-Z0-9_-]+$')
 
-def change_attention(db,payment_id,action,minutes=5):
+def change_attention(db,payment_id,action,minutes=5,request_id=None):
     wallet(db,True)
     p=db.get(PaymentRequest,payment_id)
     if not p:raise HTTPException(404,'Payment request not found')
@@ -131,17 +150,27 @@ def change_attention(db,payment_id,action,minutes=5):
     now=datetime.now(timezone.utc)
     if action=='SNOOZE':
         if not valid(p,now):raise HTTPException(409,'This payment cannot receive a deadline reminder')
-        state.snoozed_until=min(now+timedelta(minutes=minutes),utc(p.expires_at));state.dismissed=False
+        existing=db.scalar(select(PaymentReminder).where(PaymentReminder.payment_request_id==p.id,PaymentReminder.stage=='SNOOZE:'+request_id)) if request_id else None
+        if existing:return {'payment_id':p.id,'dismissed':state.dismissed,'snoozed_until':existing.next_attempt_at,'payment_unchanged':True,'idempotent':True}
+        due=min(now+timedelta(minutes=minutes),utc(p.expires_at)-timedelta(seconds=30))
+        if due<=now:raise HTTPException(409,'Too close to the deadline to schedule another reminder')
+        # Each accepted action keeps its own durable retry key, even when superseded.
+        for old in db.scalars(select(PaymentReminder).where(PaymentReminder.payment_request_id==p.id,PaymentReminder.status.in_(['PENDING','RETRY']))):old.status='CANCELLED'
+        state.snoozed_until=due;state.dismissed=False
+        occurrence=PaymentReminder(payment_request_id=p.id,stage='SNOOZE:'+(request_id or uuid4().hex));db.add(occurrence)
+        occurrence.next_attempt_at=state.snoozed_until
     else:state.dismissed=action=='DISMISS';state.snoozed_until=None
     db.flush()
     for reminder in db.scalars(select(PaymentReminder).where(PaymentReminder.payment_request_id==p.id,PaymentReminder.status.in_(['PENDING','RETRY']))):
         if state.dismissed:reminder.status='CANCELLED'
-        elif state.snoozed_until:reminder.next_attempt_at=state.snoozed_until
+        elif state.snoozed_until:
+            if reminder.stage.startswith('SNOOZE:'):reminder.next_attempt_at=state.snoozed_until
+            else:reminder.status='CANCELLED'
     return {'payment_id':p.id,'dismissed':state.dismissed,'snoozed_until':state.snoozed_until,'payment_unchanged':True}
 
 @router.post('/attention/{payment_id}')
 def update_attention(payment_id:str,data:AttentionAction,db=Depends(get_db)):
-    result=change_attention(db,payment_id,data.action,data.minutes);db.commit();return result
+    result=change_attention(db,payment_id,data.action,data.minutes,data.request_id);db.commit();return result
 
 @router.patch('/preferences')
 def update(data:PreferenceUpdate,db=Depends(get_db)):

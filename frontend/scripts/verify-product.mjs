@@ -41,6 +41,7 @@ await page.route('**/api/**', async route => {
   else if (path === '/api/auth/login') { authenticated = true;result = { authenticated }; }
   else if (path === '/api/wallet') result = { posted_balance: posted, reserved_amount: 0, available_balance: posted };
   else if (path === '/api/payments') result = payments;
+  else if (path === '/api/notifications') result = {items:payments.map(p=>({...p,payment_id:p.id,stage:p.trace.urgency,deadline:p.expires_at})),dismissed_items:[],preferences:{enabled:false}};
   else if (path.endsWith('/review')) result = guardianFixture(payments.find(p => path.includes(`/${p.id}/`)));
   else if (path === '/api/wallet/transactions') result = activities;
   else if (path === '/api/wallet/reservations') result = [];

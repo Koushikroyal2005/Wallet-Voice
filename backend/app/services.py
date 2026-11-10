@@ -62,6 +62,9 @@ def policy(db:Session,p:PaymentRequest,mode="auto",merchant_confirmed=False):
     if p.explicit_hold:return {"decision":"EXPLICIT_HOLD","reason_codes":["USER_HELD"],"urgency":"HELD"}
     s=settings_for(db);w=wallet(db);b=balances(db,w);remaining=(utc(p.expires_at)-datetime.now(timezone.utc)).total_seconds() if p.expires_at else None;urgency="FLEXIBLE" if remaining is None or remaining>10800 else "DUE_SOON" if remaining>=900 else "URGENT";codes=[];decision="ELIGIBLE"
     hard=[]
+    from .merchant_trust import current_identity
+    identity=current_identity(db,p)
+    if not identity['payable']:hard.append('MERCHANT_IDENTITY_UNAVAILABLE')
     if p.currency!=w.currency:hard.append("CURRENCY_MISMATCH")
     if p.status=="SUCCEEDED":hard.append("ALREADY_PAID")
     elif p.status not in {"PENDING","HELD","FAILED"}:hard.append("NOT_PAYABLE")
@@ -71,12 +74,12 @@ def policy(db:Session,p:PaymentRequest,mode="auto",merchant_confirmed=False):
     if b["available_balance"]-p.amount<s.minimum_balance:hard.append("MINIMUM_BALANCE")
     if hard:
         codes.extend(hard);decision="EXPIRED" if "EXPIRED" in hard else "HELD_INSUFFICIENT_BALANCE" if "MINIMUM_BALANCE" in hard else "HELD_LIMIT_EXCEEDED" if any(x in hard for x in ["PER_TRANSACTION_LIMIT","DAILY_LIMIT"]) else "REJECTED"
-    elif not p.verified and not merchant_confirmed and mode=="auto":codes.append("UNKNOWN_MERCHANT");decision="HELD_UNKNOWN_MERCHANT"
-    elif not p.verified and not merchant_confirmed and mode=="manual":codes.append("UNKNOWN_MERCHANT_CONFIRMATION_REQUIRED");decision="MANUAL_CONFIRMATION_REQUIRED"
+    elif not identity['verified'] and not merchant_confirmed and mode=="auto":codes.append("UNKNOWN_MERCHANT");decision="HELD_UNKNOWN_MERCHANT"
+    elif not identity['verified'] and not merchant_confirmed and mode=="manual":codes.append("UNKNOWN_MERCHANT_CONFIRMATION_REQUIRED");decision="MANUAL_CONFIRMATION_REQUIRED"
     elif mode=="auto" and not s.enabled:codes.append("AUTOPAY_DISABLED");decision="MANUAL_APPROVAL_REQUIRED"
     elif mode=="auto" and not automatic_mandate(db,p,False):codes.append("MANDATE_REQUIRED");decision="MANUAL_APPROVAL_REQUIRED"
     elif mode=="auto" and s.time_sensitive_only and urgency=="FLEXIBLE":codes.append("TIME_SENSITIVE_ONLY");decision="HELD_FLEXIBLE"
-    return {"policy_version":"financial-v2","mode":mode,"decision":decision,"reason_codes":codes,"urgency":urgency,"remaining_seconds":max(0,int(remaining)) if remaining is not None else None,"merchant_verified":p.verified,"transaction_amount":p.amount,"daily_spend":day_spend(db,w),**b,"settings":{"enabled":s.enabled,"time_sensitive_only":s.time_sensitive_only,"minimum_balance":s.minimum_balance,"daily_limit":s.daily_limit}}
+    return {"policy_version":"financial-v2","mode":mode,"decision":decision,"reason_codes":codes,"urgency":urgency,"remaining_seconds":max(0,int(remaining)) if remaining is not None else None,"merchant_verified":identity['verified'],"merchant_identity":identity,"transaction_amount":p.amount,"daily_spend":day_spend(db,w),**b,"settings":{"enabled":s.enabled,"time_sensitive_only":s.time_sensitive_only,"minimum_balance":s.minimum_balance,"daily_limit":s.daily_limit}}
 def post_journal(db:Session,w:Wallet,op:Operation,debit:LedgerAccount,credit:LedgerAccount,description:str):
     # Every incoming journal credit, including future demo rails, shares this cap.
     # Callers serialize on the wallet; acquire it here as a defence in depth.
@@ -141,6 +144,8 @@ def reserve(db:Session,p:PaymentRequest,key:str,mode:str,confirm_unknown=False):
     if settled:
         if not settled.reservation_id:raise FinancialError("Payment is owned by PayPal checkout")
         return settled
+    from .merchant_trust import current_identity
+    if not current_identity(db,p,True)['payable']:raise FinancialError('MERCHANT_IDENTITY_UNAVAILABLE')
     d=policy(db,p,mode,confirm_unknown)
     if d["decision"]!="ELIGIBLE":raise FinancialError(", ".join(d["reason_codes"]) or d["decision"])
     if db.scalar(select(PaymentReservation).where(PaymentReservation.payment_request_id==p.id,PaymentReservation.status=="ACTIVE").with_for_update()):raise FinancialError("Payment already reserved")

@@ -373,9 +373,10 @@ def merchant(data:Merchant,db:Session=Depends(get_db)):
 @app.get("/api/payments")
 @app.get("/api/payment-requests")
 def payments(db:Session=Depends(get_db)):
+    from .merchant_trust import current_identity
     rows=db.scalars(select(PaymentRequest).order_by(PaymentRequest.created_at.desc())).all()
     external=set(db.scalars(select(PaymentAttempt.payment_request_id).where(PaymentAttempt.reservation_id.is_(None),PaymentAttempt.status.in_(["PROCESSING","SUCCEEDED","REFUNDED"]))).all())
-    return [{**serialize(p),"trace":policy(db,p,"auto"),"payment_source":"PAYPAL_SANDBOX" if p.id in external else "AI_WALLET"} for p in rows]
+    return [{**serialize(p),"verified":current_identity(db,p)['verified'],"trace":policy(db,p,"auto"),"payment_source":"PAYPAL_SANDBOX" if p.id in external else "AI_WALLET"} for p in rows]
 @app.post("/api/payments/{payment_id}/pay")
 def pay(payment_id:str,data:Pay=Pay()):return do_payment(payment_id,data)
 @app.get('/api/payments/{payment_id}/review')
@@ -392,6 +393,8 @@ def payment_review(payment_id:str,db:Session=Depends(get_db)):
     result={'payment':serialize(p),'wallet_policy':decision,'wallet_policy_after_merchant_confirmation':confirmed,'wallet_per_transaction_limit':settings_for(db).per_transaction_limit,
         'wallet_currency':wallet(db).currency,'paypal':{**serialise(order),'updated_at':order.updated_at,'captured_at':order.captured_at} if order else None,
         'attempt':attempt_payload(a),'receipt':None}
+    result['payment']['verified']=decision.get('merchant_verified',p.verified)
+    result['merchant_identity']=decision.get('merchant_identity')
     if a:
         external=not a.reservation_id
         result['receipt']={'payment_id':p.id,'attempt_id':a.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,
