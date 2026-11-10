@@ -23,7 +23,7 @@ export function FloatingAssistant({ requested, onClose, onConfirmed }: { request
     </div>
     {mode && <Dialog title={mode === "voice" ? "Let’s talk" : "Your wallet assistant"} onClose={() => { setMode(null); onClose(); }}>
       <div className="assistant-mode-switch"><button aria-pressed={mode === "chat"} onClick={() => setMode("chat")}><MessageCircle size={16}/>Chat</button><button aria-pressed={mode === "voice"} onClick={() => setMode("voice")}><Mic size={16}/>Voice</button></div>
-      <p className="assistant-privacy">{mode === "voice" ? "Speak, then check your transcript before sending. You can change this in the options below." : "Type naturally. Your conversation stays connected across turns."} Payments still require your approval. Never share a PIN or OTP here.</p>
+      <p className="assistant-privacy">{mode === "voice" ? "Tap Talk, speak and pause. Your request is understood automatically; you can edit what was heard." : "Type naturally. Your conversation stays connected across turns."} Payments require secure approval. Never speak or type a PIN or OTP here.</p>
       <VoiceAssistantPanel mode={mode} autoStart={mode === "voice"} onConfirmed={onConfirmed}/>
     </Dialog>}
   </>;

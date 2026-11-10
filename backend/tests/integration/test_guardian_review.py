@@ -4,6 +4,7 @@ import pytest
 from concurrent.futures import ThreadPoolExecutor
 from test_paypal_lifecycle import isolated
 from app.main import payment_review, do_payment, Pay
+from app.payment_batches import create_batch,authorize
 from app.models import PaymentRequest, PaymentAttempt, PaymentReservation
 from app.services import FinancialError, reserve, balances, wallet
 from sqlalchemy import select, func
@@ -29,8 +30,9 @@ def test_guardian_read_only_and_duplicate_wallet_confirmation(isolated,monkeypat
     with factory() as db:
         first=payment_review(pid,db)
         assert first['wallet_policy']['decision']=='MANUAL_CONFIRMATION_REQUIRED' and first['receipt'] is None
+        b=create_batch(db,[pid],True);token=authorize(db,b,'123456');db.commit();ident=b.id
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results=list(pool.map(lambda _:do_payment(pid,Pay(idempotency_key='guardian-pg-duplicate',confirm_unknown_merchant=True)),range(2)))
+        results=list(pool.map(lambda _:do_payment(pid,Pay(batch_id=ident,approval_token=token,idempotency_key='guardian-pg-duplicate',confirm_unknown_merchant=True)),range(2)))
     assert results[0]['id']==results[1]['id'] and results[0]['status']=='SUCCEEDED'
     with factory() as db:
         result=payment_review(pid,db)

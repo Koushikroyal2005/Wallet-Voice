@@ -25,6 +25,8 @@ import { Dialog } from "./components/Dialog";
 import { FloatingAssistant } from "./components/FloatingAssistant";
 import { WalletPinDialog } from "./components/WalletPinDialog";
 import { PaymentGuardian } from "./components/PaymentGuardian";
+import { PaymentBatchReview } from "./components/PaymentBatchReview";
+import { AttentionQueue } from "./components/AttentionQueue";
 import {
   Drafts,
   Permissions,
@@ -183,6 +185,7 @@ function WalletApp() {
   const [failure, setFailure] = useState("");
   const [batch, setBatch] = useState<any>();
   const [batchResults, setBatchResults] = useState<any[]>();
+  const [exactBatch, setExactBatch] = useState<string>();
   const [funding, setFunding] = useState<{
     action: "TOPUP" | "WITHDRAWAL";
     amount: number;
@@ -204,6 +207,11 @@ function WalletApp() {
     return () => events.close();
   }, [refresh]);
   const items = payments.data || [];
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('review');
+    const payment = items.find(p => p.id === id);
+    if (payment) { setReview(payment); window.history.replaceState({}, '', window.location.pathname); }
+  }, [payments.data]);
   const pending = items.filter(openPayment);
   const attention = pending
     .filter((p) => !p.explicit_hold)
@@ -625,6 +633,7 @@ function WalletApp() {
         )}
         {tab === "permissions" && <Permissions onChanged={refresh} />}
         {tab === "merchant" && <MerchantDemo onChanged={refresh} />}
+        {(tab === 'home' || tab === 'payments') && <AttentionQueue onReview={id => { const payment = items.find(p => p.id === id); if (payment) reviewPayment(payment); }}/ >}
       </main>
       <FloatingAssistant requested={assistant} onClose={() => setAssistant(false)} onConfirmed={refresh} />
       {review && (
@@ -637,6 +646,7 @@ function WalletApp() {
           <PaymentGuardian paymentId={review.id} initialSource={review.payment_source} onChanged={refresh} onCancel={() => setReview(undefined)} />
         </Dialog>
       )}
+      {exactBatch && <Dialog title="Exact wallet payment review" onClose={() => setExactBatch(undefined)} variant="drawer"><PaymentBatchReview batchId={exactBatch} onChanged={refresh} onCancel={() => setExactBatch(undefined)}/></Dialog>}
       {funding && (
         <WalletPinDialog
           action={funding.action}
@@ -701,13 +711,13 @@ function WalletApp() {
             disabled={busy || !batch.eligible_count}
             onClick={() =>
               action(async () => {
-                const response = await post("/api/payments/batch/confirm", {
+                const response = await post("/api/payment-batches", {
                   payment_ids: batch.items
                     .filter((item: any) => item.decision === "ELIGIBLE")
                     .map((item: any) => item.id),
                   idempotency_key: operationKey("batch"),
                 });
-                setBatchResults(response.results);
+                setExactBatch(response.id);
                 setBatch(undefined);
                 finishOperation("batch");
               }, "Batch processed")

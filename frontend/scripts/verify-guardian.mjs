@@ -13,6 +13,7 @@ try {
     let payCalls=0;const errors=[];page.on('pageerror',e=>errors.push(e.message));
     const p={id:'rail',merchant:'Indian Railways',category:'travel',description:'Ticket',amount:125050,currency:'INR',verified:scenario!=='unknown',status:'PENDING',expires_at:new Date(Date.now()+(scenario==='expired'?-60000:3600000)).toISOString()};
     let result=guardianFixture(p);
+    let exact={id:'FIXTURE-BATCH',total:p.amount,currency:'INR',status:'REVIEW',available_balance:1000000,remaining_after_payment:1000000-p.amount,funding_shortfall:0,can_authorize:true,items:[{...p,deadline:p.expires_at,blocked:false,reason_codes:[]}]};
     if(scenario==='insufficient')result.wallet_policy={...result.wallet_policy,decision:'HELD_INSUFFICIENT_BALANCE',reason_codes:['MINIMUM_BALANCE']};
     if(scenario==='expired')result.wallet_policy={...result.wallet_policy,decision:'EXPIRED',reason_codes:['EXPIRED']};
     if(scenario.startsWith('paypal')){p.status=scenario==='paypal-pending'?'PROCESSING':'SUCCEEDED';result.payment.status=p.status;result.paypal={status:scenario==='paypal-pending'?'PENDING':'COMPLETED',order_id:'FIXTURE-ORDER',capture_id:'FIXTURE-CAPTURE',provider_currency:'USD',provider_amount:'14.89'};result.attempt={status:p.status};result.receipt={payment_id:p.id,merchant:p.merchant,amount:p.amount,currency:'INR',funding_source:'PAYPAL_SANDBOX',status:p.status,timestamp:new Date().toISOString(),timestamp_label:'Capture recorded',order_id:'FIXTURE-ORDER',capture_id:'FIXTURE-CAPTURE'};}
@@ -25,10 +26,13 @@ try {
       else if(path==='/api/payments')data=[p];
       else if(path.endsWith('/review'))data=result;
       else if(path==='/api/assistant/turn')data={response:'Review the railway request.',provider:'context-resolver',action_preview:{kind:'payment',payment_id:p.id,payment_source:'AI_WALLET',requires_confirmation:true}};
-      else if(path.endsWith('/pay')){
+      else if(path==='/api/payment-batches' || path==='/api/payment-batches/FIXTURE-BATCH')data=exact;
+      else if(path.endsWith('/authorize'))data={approval_token:'synthetic-approval-token-not-real'};
+      else if(path.endsWith('/confirm')){
         payCalls++;await new Promise(r=>setTimeout(r,200));
         p.status=scenario==='failed'?'FAILED':'SUCCEEDED';result.payment.status=p.status;result.attempt={status:p.status,failure_reason:scenario==='failed'?'DEMO_PROVIDER_FAILURE':null};
-        result.receipt={payment_id:p.id,merchant:p.merchant,amount:p.amount,currency:'INR',funding_source:'AI_WALLET',status:p.status,timestamp:new Date().toISOString(),timestamp_label:'Journal posted',journal_id:scenario==='failed'?null:'FIXTURE-JOURNAL'};data=result.attempt;
+        result.receipt={payment_id:p.id,merchant:p.merchant,amount:p.amount,currency:'INR',funding_source:'AI_WALLET',status:p.status,timestamp:new Date().toISOString(),timestamp_label:'Journal posted',journal_id:scenario==='failed'?null:'FIXTURE-JOURNAL'};
+        exact={...exact,status:p.status,items:[{...exact.items[0],attempt_id:'FIXTURE-ATTEMPT',status:p.status,failure_reason:scenario==='failed'?'DEMO_PROVIDER_FAILURE':null,receipt:scenario==='failed'?null:result.receipt}]};data=exact;
       }else if(path.endsWith('/hold')){p.explicit_hold=true;p.status='HELD';result.payment={...result.payment,...p};result.wallet_policy={decision:'EXPLICIT_HOLD',reason_codes:['USER_HELD']};data=p;}
       else if(path==='/api/paypal/config')data={configured:true,environment:'sandbox'};
       else if(path.endsWith('/order'))data=result.paypal;
@@ -41,9 +45,13 @@ try {
     const panel=page.getByRole('region',{name:'Payment Guardian'});await panel.getByText('Indian Railways',{exact:true}).first().waitFor();
     if(['wallet','failed'].includes(scenario)){
       await panel.getByRole('button',{name:'Confirm action',exact:true}).evaluate(b=>{b.click();b.click();});
-      await panel.getByRole('heading',{name:scenario==='wallet'?'Payment completed':'Payment did not complete',exact:true}).waitFor();
+      const exactPanel=page.getByRole('region',{name:'Exact payment review'});
+      await exactPanel.getByLabel('Six-digit wallet PIN').fill('123456');
+      await exactPanel.getByRole('button',{name:'Approve exact payments',exact:true}).evaluate(b=>{b.click();b.click();});
+      await exactPanel.getByRole('heading',{name:scenario==='wallet'?'All selected payments completed':'Payments failed',exact:true}).waitFor();
       assert.equal(payCalls,1,'Duplicate confirmation must submit once');
-      await panel.getByText(scenario==='wallet'?'FIXTURE-JOURNAL':'DEMO_PROVIDER_FAILURE',{exact:true}).waitFor();
+      if(scenario==='wallet')await exactPanel.getByText('Payment receipt',{exact:true}).click();
+      await exactPanel.getByText(scenario==='wallet'?'FIXTURE-JOURNAL':'DEMO_PROVIDER_FAILURE',{exact:true}).waitFor();
     }else if(scenario==='unknown'){
       assert.ok(await panel.getByRole('button',{name:'Confirm action',exact:true}).isDisabled());
       await panel.getByLabel('I recognize this business and have checked the amount.').check();
@@ -56,8 +64,10 @@ try {
       assert.equal(await panel.getByRole('button',{name:'Confirm action',exact:true}).count(),0);
     }else assert.ok(await panel.getByRole('button',{name:'Confirm action',exact:true}).isDisabled());
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal page overflow');
-    assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'No panel overflow');
-    await panel.getByLabel('Payment decision timeline').waitFor();
+    if(!['wallet','failed'].includes(scenario)){
+      assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'No panel overflow');
+      await panel.getByLabel('Payment decision timeline').waitFor();
+    }
     assert.deepEqual(errors,[]);await page.close();
   }
   console.log('PASSED: 8 Guardian browser fixture scenarios; desktop/mobile, duplicate-click guard, unknown merchant, policy holds, expiry, hold, failed and completed wallet records, pending/completed PayPal states.');

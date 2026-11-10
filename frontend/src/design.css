@@ -2007,3 +2007,23 @@ button { min-height: 44px; border-radius: 8px; }
   .assistant-orb { width: 44px; height: 44px; box-shadow: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+/* V1 exact review and attention: one consistent sheet on desktop and mobile. */
+.batch-review { display:grid;gap:16px;min-width:0;padding:8px; }
+.batch-review h3 {margin:0;font-size:clamp(1.3rem,3vw,1.7rem);}
+.batch-review .batch-items {list-style:none;margin:0;padding:0;display:grid;gap:12px;}
+.batch-review .batch-items li {border:1px solid #dfe6e5;border-radius:16px;padding:16px;min-width:0;}
+.batch-review .batch-items li>div,.batch-totals>div {display:flex;justify-content:space-between;gap:16px;}
+.batch-review p {margin:8px 0;line-height:1.5;}
+.batch-review dd {margin:0;overflow-wrap:anywhere;}
+.batch-review b,.batch-totals dd {font-variant-numeric:tabular-nums;font-weight:700;}
+.batch-totals {background:#f4f6f3;border-radius:12px;padding:16px;display:grid;gap:12px;}
+.batch-review form {display:grid;gap:12px;}
+.batch-review input {max-width:100%;min-height:48px;font-size:1.1rem;}
+.batch-review details {font-size:.9rem;}
+.attention-queue {margin-top:24px;padding:24px;}
+.attention-queue article {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid #e3e8e7;}
+.attention-queue details {margin-top:16px;}
+.attention-queue summary,.assistant-technical summary {cursor:pointer;padding:12px 0;}
+.attention-queue details button {margin:8px 8px 0 0;}
+.assistant-technical {font-size:.85rem;}
+@media(max-width:480px){.attention-queue{padding:16px;}.attention-queue article{align-items:flex-start;flex-direction:column;}.batch-review{padding:0;}.batch-review .batch-items li{padding:12px;}}

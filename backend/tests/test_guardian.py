@@ -11,11 +11,16 @@ def seed(factory, **values):
         p=PaymentRequest(merchant='Rail',category='travel',description='Ticket',amount=125000,verified=True,**values)
         db.add(p);db.commit();return p.id
 
+def approval(client,pid):
+    review=client.post('/api/payment-batches',json={'payment_ids':[pid]}).json()
+    auth=client.post(f"/api/payment-batches/{review['id']}/authorize",json={'pin':'123456'}).json()
+    return {'batch_id':review['id'],'approval_token':auth['approval_token']}
+
 def test_wallet_success_and_duplicate_confirmation(client,factory):
     pid=seed(factory)
     review=client.get(f'/api/payments/{pid}/review').json()
     assert review['wallet_policy']['decision']=='ELIGIBLE' and review['receipt'] is None
-    body={'idempotency_key':'guardian-confirm-key'}
+    body={'idempotency_key':'guardian-confirm-key',**approval(client,pid)}
     first=client.post(f'/api/payments/{pid}/pay',json=body)
     second=client.post(f'/api/payments/{pid}/pay',json=body)
     assert first.json()==second.json() and first.json()['status']=='SUCCEEDED'
@@ -29,7 +34,7 @@ def test_wallet_success_and_duplicate_confirmation(client,factory):
 def test_failed_payment_has_no_success_journal(client,factory):
     pid=seed(factory)
     with factory() as db:db.get(PaymentRequest,pid).description='force-fail';db.commit()
-    assert client.post(f'/api/payments/{pid}/pay',json={'idempotency_key':'guardian-failed-key'}).json()['status']=='FAILED'
+    assert client.post(f'/api/payments/{pid}/pay',json={'idempotency_key':'guardian-failed-key',**approval(client,pid)}).json()['status']=='FAILED'
     result=client.get(f'/api/payments/{pid}/review').json()
     assert result['receipt']['status']=='FAILED' and result['receipt']['journal_id'] is None
     assert result['attempt']['failure_reason']=='DEMO_PROVIDER_FAILURE'
@@ -77,7 +82,7 @@ def test_review_missing_request(client):
 def test_wallet_rejects_foreign_currency_without_financial_mutation(client,factory):
     pid=seed(factory,currency='USD')
     response=client.post(f'/api/payments/{pid}/pay',json={'idempotency_key':'foreign-currency-key'})
-    assert response.status_code==409
+    assert response.status_code==403  # Direct execution also requires exact PIN approval.
     assert 'CURRENCY_MISMATCH' in client.get(f'/api/payments/{pid}/review').json()['wallet_policy']['reason_codes']
     with factory() as db:
         assert balances(db,wallet(db))['posted_balance']==1000000

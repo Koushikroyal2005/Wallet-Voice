@@ -1,5 +1,5 @@
 """Runs only in the isolated docker-compose.test.yml database."""
-import os,threading
+import os,threading,uuid
 import pytest
 from sqlalchemy import create_engine,select,func,text
 from sqlalchemy.orm import sessionmaker
@@ -13,11 +13,15 @@ pytestmark=pytest.mark.skipif(not URL,reason="requires isolated PostgreSQL test 
 def factory():
     from sqlalchemy.engine import make_url
     target=make_url(URL)
-    if target.database!='aiwallet_test' or target.host!='test-db':pytest.fail('Refusing to reset any database except aiwallet_test@test-db')
-    engine=create_engine(URL,isolation_level="READ COMMITTED")
-    with engine.begin() as connection:
-        connection.execute(text("TRUNCATE app_events, payment_reservations, payment_attempts, payment_requests, ledger_entries, journal_transactions, operations, ledger_accounts, autopay_settings, wallets RESTART IDENTITY CASCADE"))
-    return sessionmaker(bind=engine,expire_on_commit=False)
+    if target.database!='aiwallet_test' or target.host!='test-db':pytest.fail('Only isolated aiwallet_test@test-db is permitted')
+    schema='financial_test_'+uuid.uuid4().hex
+    admin=create_engine(URL)
+    with admin.begin() as connection:connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+    admin.dispose()
+    engine=create_engine(URL,isolation_level="READ COMMITTED",connect_args={'options':f'-csearch_path={schema}'})
+    Base.metadata.create_all(engine)
+    yield sessionmaker(bind=engine,expire_on_commit=False)
+    engine.dispose()
 def fund(factory,amount=200000):
     with factory() as s:topup_or_withdraw(s,amount,"TOPUP","integration-fund");s.commit()
 def test_concurrent_withdrawals_cannot_overspend(factory):

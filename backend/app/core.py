@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     default_per_transaction_limit: int = 500_000
     default_minimum_balance: int = 10_000
     app_timezone: str = "Asia/Kolkata"
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = ""
     nvidia_api_key: str = ""
     paypal_client_id: str = ""
     paypal_client_secret: str = ""

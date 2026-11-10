@@ -10,6 +10,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { PaymentGuardian } from "./PaymentGuardian";
+import { PaymentBatchReview } from "./PaymentBatchReview";
 import { WalletPinDialog } from "./WalletPinDialog";
 import { WalletCompanion } from "./WalletCompanion";
 import { money } from "../lib/formatting";
@@ -28,6 +29,7 @@ type Preview = {
   verified?: boolean;
   requires_confirmation?: boolean;
   payment_ids?: string[];
+  batch_id?: string;
 };
 type Turn = {
   conversation_id: string;
@@ -86,7 +88,7 @@ export function VoiceAssistantPanel({
   const [provider, setProvider] = useState("");
   const [speechProvider, setSpeechProvider] = useState("");
   const [playbackProvider, setPlaybackProvider] = useState("");
-  const [reviewTranscript, setReviewTranscript] = useState(() => localStorage.getItem("wallet-review-transcript") !== "off");
+  const [reviewTranscript, setReviewTranscript] = useState(() => localStorage.getItem("wallet-review-transcript") === "on");
   const [readReplies, setReadReplies] = useState(false);
   const readRepliesRef = useRef(readReplies);
   readRepliesRef.current = readReplies;
@@ -323,6 +325,7 @@ export function VoiceAssistantPanel({
           if (response.status === 401) window.dispatchEvent(new Event("wallet-session-expired"));
           if (!response.ok)
             throw new Error(data.detail || "Transcription failed");
+          if (typeof data.transcript !== 'string' || !data.transcript.trim()) throw new Error('I did not hear a clear request. Please try again or type it.');
           setText(data.transcript);
           setHeard(data.transcript || "");
           setSpeechProvider(data.provider === "nvidia-riva-whisper-large-v3" ? "NVIDIA Whisper" : "Unreported transcription provider");
@@ -528,13 +531,15 @@ export function VoiceAssistantPanel({
         </button>
       </div>
       <div className="assistant-progress" role="status" aria-live="polite">{stateCopy[state]}{state === "RECORDING" ? " — pause when you’re finished" : ""}</div>
-      <p className="assistant-privacy" aria-label="Assistant provider">{provider === "nvidia-nemotron" ? "Reasoning: NVIDIA Nemotron" : provider === "demo-parser" ? "Reasoning: deterministic demo parser (NVIDIA was not used)" : provider === "context-resolver" ? "Reasoning: saved conversation context (no model call this turn)" : "Reasoning: no provider result yet"}{speechProvider && ` · Last transcription: ${speechProvider}`}{playbackProvider && ` · Last playback: ${playbackProvider}`}</p>
+      {preview?.kind === "payment_batch" && preview.batch_id && <PaymentBatchReview key={preview.batch_id} batchId={preview.batch_id} onChanged={onConfirmed} onCancel={() => { setPreview(undefined); void ask('cancel'); }}/ >}
+      <details className="assistant-technical"><summary>Assistant details and voice preferences</summary><p className="assistant-privacy" aria-label="Assistant provider">{provider === "nvidia-nemotron" ? "Reasoning: NVIDIA Nemotron" : provider === "demo-parser" ? "Reasoning: deterministic demo parser (NVIDIA was not used)" : provider === "context-resolver" ? "Reasoning: saved conversation context (no model call this turn)" : "Reasoning: no provider result yet"}{speechProvider && ` · Last transcription: ${speechProvider}`}{playbackProvider && ` · Last playback: ${playbackProvider}`}</p>
       <label className="assistant-privacy"><input type="checkbox" checked={reviewTranscript} disabled={state === "RECORDING" || busy} onChange={event => { setReviewTranscript(event.target.checked); localStorage.setItem("wallet-review-transcript", event.target.checked ? "on" : "off"); }}/> Review transcript before sending</label>
       <label className="assistant-privacy"><input type="checkbox" checked={readReplies} onChange={event => { setReadReplies(event.target.checked); if (!event.target.checked) stopVoice(); }}/> Read replies aloud in voice mode</label>
+      </details>
       {state === "RECORDING" && <div className="listening-meter" aria-label="Microphone input level"><span style={{width: `${Math.max(3, level * 100)}%`}}/></div>}
-      {heard && <p className="heard-transcript"><strong>I heard:</strong> {heard}</p>}
+      {heard && <div className="heard-transcript"><p><strong>I heard:</strong> {heard}</p><button className="text-button" disabled={busy || state === 'RECORDING'} onClick={() => { stopVoice(); setPreview(undefined); setText(heard); setState('TRANSCRIPT_READY'); document.getElementById('wallet-command')?.focus(); }}>Edit transcript</button></div>}
       {state === "TRANSCRIPT_READY" && <p className="assistant-privacy">Check or edit the transcript below, then select Send request. Nothing has been submitted to the assistant yet.</p>}
-      {mode === "voice" && <><div className={`voice-aura ${state === "RECORDING" || state === "SPEAKING" ? "active" : ""}`} aria-hidden="true"><WalletCompanion/><i/><i/></div><label className="assistant-privacy"><input type="checkbox" checked={patientListening} disabled={state === "RECORDING"} onChange={event => { setPatientListening(event.target.checked); localStorage.setItem("wallet-patient-listening",String(event.target.checked)); }}/> Give me more time to pause between words (next recording)</label></>}
+      {mode === "voice" && !preview && <><div className={`voice-aura ${state === "RECORDING" || state === "SPEAKING" ? "active" : ""}`} aria-hidden="true"><WalletCompanion/><i/><i/></div><label className="assistant-privacy"><input type="checkbox" checked={patientListening} disabled={state === "RECORDING"} onChange={event => { setPatientListening(event.target.checked); localStorage.setItem("wallet-patient-listening",String(event.target.checked)); }}/> Give me more time to pause between words (next recording)</label></>}
       {messages.length > 0 && (
         <div
           className="conversation-timeline"
@@ -626,7 +631,7 @@ export function VoiceAssistantPanel({
         </div>
       )}
       {preview?.kind === "payment" && preview.payment_id && <PaymentGuardian key={`${preview.payment_id}:${preview.payment_source}`} paymentId={preview.payment_id} initialSource={preview.payment_source} onChanged={onConfirmed} onCancel={() => { setPreview(undefined); stopVoice(); void ask("cancel"); }} />}
-      {preview?.requires_confirmation && preview.kind !== "payment" && (
+      {preview?.requires_confirmation && preview.kind !== "payment" && preview.kind !== "payment_batch" && (
         <div className="voice-preview">
           <div>
             <span className="eyebrow">CONFIRMATION REQUIRED</span>

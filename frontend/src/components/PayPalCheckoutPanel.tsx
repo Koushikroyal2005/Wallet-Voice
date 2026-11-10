@@ -59,7 +59,7 @@ export function PayPalCheckoutPanel({
       setPendingOrder(""); setPhase("Completed"); setState("The backend verified your PayPal capture.");
       if (!completed.current) { completed.current = true; complete.current(); }
     } else if (["DENIED", "DECLINED", "FAILED", "REFUNDED", "VOIDED"].includes(result.status)) {
-      setPendingOrder(""); setPhase("Failed or denied");
+      setPendingOrder(""); setPhase(result.status === 'REFUNDED' ? 'Refunded' : "Failed or denied");
       setState(result.status === "REFUNDED" ? "This PayPal payment was refunded." : "PayPal did not complete this payment. Your wallet funds were not used.");
     } else if (result.status === "PENDING") {
       setPendingOrder(result.order_id); setPhase("Processing"); setState("PayPal is processing your capture. Waiting for a confirmed result.");
@@ -227,10 +227,10 @@ export function PayPalCheckoutPanel({
           amount at checkout.
         </small>
       )}
-      <button disabled={!ready || busy || !!pendingOrder || ["Completed", "Failed or denied"].includes(phase)} onClick={checkout}>
+      <button disabled={!ready || busy || !!pendingOrder || ["Completed", "Failed or denied", "Refunded"].includes(phase)} onClick={checkout}>
         {busy ? "Waiting for PayPal…" : "Continue with PayPal"}
       </button>
-      {(!ready || !!pendingOrder || phase === "Status unknown") && !["Completed", "Failed or denied"].includes(phase) && (
+      {(!ready || !!pendingOrder || phase === "Status unknown") && !["Completed", "Failed or denied", "Refunded"].includes(phase) && (
         <button className="secondary" onClick={() => setRetry(retry + 1)}>
           Reconnect
         </button>

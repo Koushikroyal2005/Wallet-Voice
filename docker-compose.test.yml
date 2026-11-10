@@ -13,7 +13,7 @@ services:
     tmpfs: [/var/lib/postgresql/data]
   test:
     build: ./backend
-    command: ["sh", "-c", "python scripts/reset_test_database.py && alembic -c alembic.ini upgrade head && pytest -q tests/integration"]
+    command: ["sh", "-c", "alembic -c alembic.ini upgrade head && pytest -q tests/integration"]
     environment:
       DATABASE_URL: postgresql+psycopg://aiwallet_test:aiwallet_test@test-db:5432/aiwallet_test
       TEST_DATABASE_URL: postgresql+psycopg://aiwallet_test:aiwallet_test@test-db:5432/aiwallet_test

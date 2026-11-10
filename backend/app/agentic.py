@@ -34,6 +34,7 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     from .context import contextual_intent
     from .voice import execute_tool,nvidia_ready
     from .services import utc
+    from .models import PaymentBatch
     conversation=conversation_for(db,conversation_id)
     fingerprint=hashlib.sha256(text.encode()).hexdigest()
     def replay(row):
@@ -46,8 +47,12 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     history=conversation_history(db,conversation,settings().voice_history_max_turns)
     ident=conversation.id;version=conversation.updated_at
     state=SimpleNamespace(selected_payment_id=conversation.selected_payment_id,context=copy.deepcopy(conversation.context or {}))
+    previous_batch_id=state.context.get('batch_id')
     db.commit()
-    intent=contextual_intent(text,state)
+    from .batch_voice import interpret,prepare
+    from .voice import Intent
+    batch_args=interpret(text,state.context)
+    intent=Intent('prepare_payment_batch',batch_args,provider='context-resolver') if batch_args else contextual_intent(text,state)
     if intent is None:
         intent=await intent_provider(text,history)
     row=db.scalar(select(Conversation).where(Conversation.id==ident).with_for_update().execution_options(populate_existing=True))
@@ -58,9 +63,14 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     receipts=dict((row.context or {}).get('turn_receipts') or {})
     row.selected_payment_id=state.selected_payment_id
     row.context=state.context
-    outcome=execute_tool(db,intent)
+    outcome=prepare(db,intent.args,state.context) if intent.tool=='prepare_payment_batch' else execute_tool(db,intent)
     preview=outcome.get('preview');response=outcome.get('response') or 'Please clarify your request.'
     context=dict(row.context or {})
+    if preview and preview.get('batch_id'):context['batch_id']=preview['batch_id']
+    if text.strip().lower().rstrip('.!?') in {'cancel','stop','no'}:
+        from .batch_voice import retire
+        retire(db,previous_batch_id)
+        context.pop('batch_id',None)
     if outcome.get('clear_selection'):
         row.selected_payment_id=None;context.pop('selected_source',None)
         if not outcome.get('ambiguous'):context.pop('listed_payment_ids',None)

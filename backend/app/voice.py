@@ -24,6 +24,8 @@ TOOLS=[{"type":"function","function":{"name":n,"description":d,"parameters":p}} 
 READ_ONLY={"get_wallet_balance","get_wallet_transactions","list_payment_requests","list_payment_drafts","get_urgent_payment_requests","get_autopay_settings","evaluate_batch_payments"}
 TOOLS.extend([{'type':'function','function':{'name':name,'description':description,'parameters':{'type':'object','properties':{'payment_id':{'type':'string'}},'required':['payment_id'],'additionalProperties':False}}} for name,description in [('get_payment_details','Explain the backend state and urgency of a known payment ID without preparing or executing payment.'),('prepare_hold','Prepare a hold for explicit UI confirmation; never schedule or pay automatically.')]])
 READ_ONLY.add('get_payment_details')
+TOOLS.append({'type':'function','function':{'name':'prepare_payment_batch','description':'Prepare multiple existing requests by user-supplied merchant phrases, with explicit exclusions. Never supplies IDs, amounts or authorization.','parameters':{'type':'object','properties':{'include':{'type':'array','items':{'type':'string'}},'exclude':{'type':'array','items':{'type':'string'}}},'required':['include'],'additionalProperties':False}}})
+SYSTEM_PROMPT += ' For several payments use prepare_payment_batch with the exact merchant phrases included and excluded by the user. Never add a merchant. A batch uses the simulated internal wallet and still needs a secure PIN.'
 class VoiceError(ValueError):pass
 @dataclass
 class Intent: tool:str; args:dict; response:str|None=None; provider:str="demo-parser"
@@ -85,6 +87,10 @@ async def nemotron_intent(text:str,history:list[dict])->Intent:
     if name not in {x["function"]["name"] for x in TOOLS}:raise VoiceError("Assistant requested an unsupported action")
     try:args=validate_tool_arguments(name,json.loads(call.get("arguments","{}")))
     except Exception as e:raise VoiceError("Assistant returned invalid action details") from e
+    if name=='prepare_payment_batch':
+        # Only literal user-supplied selection phrases are accepted from the model.
+        if any(phrase.lower() not in text.lower() for phrase in args.get('include',[])+args.get('exclude',[])):
+            raise VoiceError('Selection did not match your words. Please name the requests again.')
     if name=='prepare_autopay_settings_change':
         if not re.search(r'\b(?:urgent|flexible|due)\b|time[ -]sensitive',value):args.pop('time_sensitive_only',None)
         if not re.search(r'\b(?:enable|disable|on|off)\b',value):args.pop('enabled',None)
@@ -109,6 +115,9 @@ def validate_tool_arguments(name, raw):
         raise ValueError('Missing tool arguments')
     if 'payment_source' in raw and raw['payment_source'] not in {'AI_WALLET','PAYPAL_SANDBOX'}:
         raise ValueError('Unsupported payment source')
+    if name=='prepare_payment_batch':
+        if any(not isinstance(raw.get(k,[]),list) or len(raw.get(k,[]))>50 or any(not isinstance(x,str) or not 1<=len(x)<=120 for x in raw.get(k,[])) for k in ('include','exclude')):raise ValueError('Invalid batch selection')
+        return raw
     return ToolArgs.model_validate(raw,strict=True).model_dump(exclude_none=True)
 def execute_tool(db:Session,intent:Intent):
     if 'amount' in intent.args and (type(intent.args['amount']) is not int or not 0<intent.args['amount']<=10_000_000):
@@ -138,7 +147,7 @@ def execute_tool(db:Session,intent:Intent):
     if intent.tool=="get_autopay_settings":return {"response":"Here are your AutoPay settings.","data":{k:getattr(settings_for(db),k) for k in ["enabled","time_sensitive_only","daily_limit","minimum_balance"]}}
     if intent.tool=="evaluate_batch_payments":
         result=batch_preview(db);ids=[item['id'] for item in result['items'] if item['decision']=='ELIGIBLE']
-        return {'response':f"{len(ids)} payments are eligible for {result['required_total']/100:.2f} rupees. Review before paying.",'data':result['items'],'preview':{'kind':'batch','total':result['required_total'],'count':len(ids),'payment_ids':ids,'requires_confirmation':bool(ids)}}
+        return {'response':f"{len(ids)} payments are eligible for {result['required_total']/100:.2f} rupees. This is an evaluation only. Name the requests you want to pay to prepare an exact PIN review.",'data':result['items']}
     if intent.tool in {"prepare_topup","prepare_withdrawal"}:
         if w.currency!='INR':return {'response':'This wallet is not in INR. Use Wallet to review its currency before preparing a transfer.'}
         amount=intent.args.get("amount");

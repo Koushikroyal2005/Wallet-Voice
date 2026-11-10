@@ -1,0 +1,45 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api, post } from '../lib/api';
+import { money } from '../lib/formatting';
+
+export function AttentionQueue({ onReview }: { onReview: (id: string) => void }) {
+  const { data, refetch } = useQuery({ queryKey: ['attention'], queryFn: () => api('/api/notifications') });
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function enable() {
+    setBusy(true);
+    try {
+      if (!isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('This browser cannot receive background reminders here. In-app attention remains available.');
+      if (!data?.push_configured) throw new Error('Background reminders are not configured. Your requests remain saved in the inbox.');
+      if (await Notification.requestPermission() !== 'granted') throw new Error('Notifications were not enabled. You can still review reminders in the app.');
+      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.ready;
+      const raw = atob(data.public_key.replace(/-/g, '+').replace(/_/g, '/'));
+      const applicationServerKey = Uint8Array.from(raw, c => c.charCodeAt(0));
+      const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+      await post('/api/notifications/subscriptions', subscription.toJSON());
+      await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, push_enabled: true }) });
+      await refetch(); setMessage('Background reminders enabled. Quiet hours still apply.');
+    } catch (e) { setMessage((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <section className="attention-queue surface" aria-label="Payment reminders">
+    <div><span className="eyebrow">NEEDS YOUR ATTENTION</span><h2>Remembered for you</h2></div>
+    {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><p>{money(item.amount)} · Due {new Date(item.deadline).toLocaleString()}</p></div><button className="secondary" onClick={() => onReview(item.payment_id)}>Review now</button></article>) : <p>No deadline reminders right now. Payment requests stay saved when you leave.</p>}
+    <details><summary>Reminder preferences</summary>
+      <label><input type="checkbox" checked={data?.preferences?.enabled ?? true} onChange={async e => {
+        try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, enabled: e.target.checked }) }); await refetch(); } catch (error) { setMessage((error as Error).message); }
+      }}/> In-app deadline reminders</label>
+      <p>Quiet hours: {data?.preferences?.quiet_start ?? 22}:00–{data?.preferences?.quiet_end ?? 8}:00, local wallet time.</p>
+      {(['quiet_start','quiet_end'] as const).map(key => <label key={key}>{key === 'quiet_start' ? 'Quiet hours start' : 'Quiet hours end'}<select value={data?.preferences?.[key] ?? (key === 'quiet_start' ? 22 : 8)} onChange={async e => {
+        try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, [key]: Number(e.target.value) }) }); await refetch(); } catch (error) { setMessage((error as Error).message); }
+      }}>{Array.from({length:24},(_,hour)=><option value={hour} key={hour}>{String(hour).padStart(2,'0')}:00</option>)}</select></label>)}
+      <button className="secondary" disabled={busy} onClick={() => void enable()}>Enable background reminders</button>
+      <button className="text-button" disabled={!data?.preferences?.push_enabled} onClick={async () => {
+        try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, push_enabled: false }) }); await refetch(); setMessage('Background reminders paused.'); } catch (e) { setMessage((e as Error).message); }
+      }}>Pause background reminders</button>
+    </details>
+    {message && <p role="status">{message}</p>}
+  </section>;
+}

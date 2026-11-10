@@ -9,8 +9,13 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, de
 const issues = [];
 page.on('console', message => { if (message.type() === 'error') issues.push(`console: ${message.text()}`); });
 page.on('pageerror', error => issues.push(`page: ${error.message}`));
-await page.goto('http://127.0.0.1:8080', { waitUntil: 'domcontentloaded' });
-await page.getByRole('heading', { name: 'Your wallet' }).waitFor();
+await page.goto(process.env.UI_TEST_URL || 'http://127.0.0.1:8080', { waitUntil: 'domcontentloaded' });
+if (await page.getByRole('button',{name:'Unlock wallet',exact:true}).isVisible()) {
+  if (!process.env.UI_TEST_PIN) throw new Error('Wallet is locked. Set UI_TEST_PIN explicitly for this local screenshot run; no private .env is loaded.');
+  await page.locator('input[type="password"]').fill(process.env.UI_TEST_PIN);
+  await page.getByRole('button',{name:'Unlock wallet',exact:true}).click();
+}
+await page.getByRole('button', { name: 'Talk to your wallet',exact:true }).waitFor();
 
 async function capture(name, width, height, navLabel) {
   await page.setViewportSize({ width, height });
@@ -24,15 +29,15 @@ async function capture(name, width, height, navLabel) {
 
 const group = process.argv[2] || 'desktop';
 if (group === 'desktop') {
-  await capture('overview-1440x1000', 1440, 1000, 'Overview');
-  await capture('payments-1440x1000', 1440, 1000, 'Payment Inbox');
-  await capture('autopay-1440x1000', 1440, 1000, 'AutoPay controls');
-  await capture('overview-1280x900', 1280, 900, 'Overview');
+  await capture('home-1440x1000', 1440, 1000, 'Home');
+  await capture('payments-1440x1000', 1440, 1000, 'Payments');
+  await capture('security-1440x1000', 1440, 1000, 'Auto-pay & security');
+  await capture('home-1280x900', 1280, 900, 'Home');
 } else {
-  await capture('payments-768x1024', 768, 1024, 'Payment Inbox');
-  await capture('overview-390x844', 390, 844, 'Overview');
-  await capture('payments-390x844', 390, 844, 'Payment Inbox');
-  await capture('autopay-390x844', 390, 844, 'AutoPay controls');
+  await capture('payments-768x1024', 768, 1024, 'Payments');
+  await capture('home-390x844', 390, 844, 'Home');
+  await capture('payments-390x844', 390, 844, 'Payments');
+  await capture('security-390x844', 390, 844, 'Auto-pay & security');
 }
 console.log(JSON.stringify({ output, issues }, null, 2));
 await browser.close();

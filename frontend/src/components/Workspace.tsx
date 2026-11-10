@@ -73,6 +73,9 @@ export function WalletView({
         <section className="surface"><span className="eyebrow">RESERVED FOR PAYMENTS</span><strong>{balance ? money(balance.reserved_amount) : '—'}</strong><p>Set aside while payments finish.</p></section>
       </div>
       <section className="surface payment-method-card">
+        <p>Maximum simulated posted wallet balance: ₹1,00,000. Existing ledger history is preserved.</p>
+        <button className="secondary" disabled={(balance?.posted_balance || 0) + 50000 > 10000000} onClick={() => onFund('TOPUP',50000)}>Receive ₹500 demo bank transfer</button>
+        <p>This example is a simulated incoming bank top-up recorded in your wallet journal. Your PIN is required.</p>
         <span className="eyebrow">PAYMENT METHODS</span>
         <h3>PayPal at checkout</h3>
         <p>Choose PayPal when reviewing a payment. Your personal account is selected during PayPal checkout.</p>

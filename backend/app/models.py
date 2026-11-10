@@ -74,3 +74,52 @@ class PaymentIntent(Base):
 class SpendingMandate(Base):
     __tablename__="spending_mandates"
     id: Mapped[str]=mapped_column(String,primary_key=True,default=uid); user_id: Mapped[str]=mapped_column(String,default="demo-user",index=True); merchant: Mapped[str]=mapped_column(String,index=True); max_amount: Mapped[int]=mapped_column(Integer); daily_limit: Mapped[int]=mapped_column(Integer); spent_today: Mapped[int]=mapped_column(Integer,default=0); context: Mapped[dict]=mapped_column(JSON,default=dict); status: Mapped[str]=mapped_column(String,default="ACTIVE"); expires_at: Mapped[datetime]=mapped_column(DateTime(timezone=True)); created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class PaymentBatch(Base):
+    __tablename__='payment_batches'
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    snapshot: Mapped[dict]=mapped_column(JSON)
+    snapshot_hash: Mapped[str]=mapped_column(String(64))
+    total: Mapped[int]=mapped_column(Integer)
+    source: Mapped[str]=mapped_column(String,default='AI_WALLET')
+    status: Mapped[str]=mapped_column(String,default='REVIEW')
+    expires_at: Mapped[datetime]=mapped_column(DateTime(timezone=True))
+    approval_id: Mapped[str|None]=mapped_column(ForeignKey('authorization_challenges.id'),nullable=True)
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class PaymentBatchItem(Base):
+    __tablename__='payment_batch_items'
+    __table_args__=(UniqueConstraint('batch_id','payment_request_id',name='uq_batch_request'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    batch_id: Mapped[str]=mapped_column(ForeignKey('payment_batches.id'),index=True)
+    payment_request_id: Mapped[str]=mapped_column(ForeignKey('payment_requests.id'))
+    attempt_id: Mapped[str|None]=mapped_column(ForeignKey('payment_attempts.id'),nullable=True)
+
+class PaymentReminder(Base):
+    __tablename__='payment_reminders'
+    __table_args__=(UniqueConstraint('payment_request_id','stage',name='uq_payment_reminder_stage'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    payment_request_id: Mapped[str]=mapped_column(ForeignKey('payment_requests.id'),index=True)
+    stage: Mapped[str]=mapped_column(String)
+    status: Mapped[str]=mapped_column(String,default='PENDING')
+    attempts: Mapped[int]=mapped_column(Integer,default=0)
+    deliveries: Mapped[dict]=mapped_column(JSON,default=dict)
+    next_attempt_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class NotificationPreferences(Base):
+    __tablename__='notification_preferences'
+    user_id: Mapped[str]=mapped_column(String,primary_key=True,default='demo-user')
+    enabled: Mapped[bool]=mapped_column(Boolean,default=True)
+    push_enabled: Mapped[bool]=mapped_column(Boolean,default=False)
+    quiet_start: Mapped[int]=mapped_column(Integer,default=22)
+    quiet_end: Mapped[int]=mapped_column(Integer,default=8)
+
+class PushSubscription(Base):
+    __tablename__='push_subscriptions'
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user')
+    endpoint: Mapped[str]=mapped_column(String,unique=True)
+    subscription: Mapped[dict]=mapped_column(JSON)
+    active: Mapped[bool]=mapped_column(Boolean,default=True)

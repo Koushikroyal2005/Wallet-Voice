@@ -9,4 +9,4 @@ def test_demo_initializer_is_idempotent_and_uses_services(monkeypatch):
     first=demo.initialize_demo();second=demo.initialize_demo()
     with factory() as s:
         rows=s.query(PaymentRequest).filter_by(provider=demo.SEED_PROVIDER).all()
-        assert len(rows)==3 and len(first["payment_requests"])==len(second["payment_requests"])==3
+        assert len(rows)==4 and len(first["payment_requests"])==len(second["payment_requests"])==4

@@ -1,4 +1,10 @@
-# AI Wallet
+# Wallet-Voice Guardian — V1
+
+Say “Pay the train and movie tickets, not the food order.” Wallet-Voice resolves stored requests, shows an exact review, checks wallet policies and requires one PIN for those exact simulated internal-wallet payments. It records each result and journal receipt separately. PayPal Sandbox continues to require its own buyer approval and provider-confirmed capture.
+
+V1 adds automatic conversation after explicit microphone recording, editable transcripts, persistent exact batch reviews, transaction-bound PIN approval for single wallet payments, a ₹1,00,000 posted-wallet ceiling, a server-owned attention queue and configurable Web Push. See [implementation and limits](docs/V1_IMPLEMENTATION.md), [verification](docs/TESTING.md), and [demo](docs/DEMO_SCRIPT.md).
+
+To use background reminders, configure `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (a `mailto:` operator contact) in your private environment, rebuild, then choose **Enable background reminders**. HTTPS or localhost and a supported browser are required. Permission is requested only through that button. Without configuration, the durable in-app attention queue still works. Quiet hours use `APP_TIMEZONE` and can be edited in reminder preferences.
 
 AI Wallet is a local-first fintech hackathon prototype with an append-only journal ledger, simulated bank transfers, payment reservations, deterministic payment policy, and background expiry processing.
 
@@ -14,7 +20,7 @@ docker compose up --build
 
 Fresh installs keep wallet sign-in enabled. Generate a session secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and paste it into `WALLET_SESSION_SECRET` in your private `.env`. Do not share or commit it. Startup rejects a missing/short secret. Set your demo wallet PIN before initializing a new database; changing the environment does not replace an existing stored PIN.
 
-Open `http://localhost:8080`; API docs are at `http://localhost:8000/docs`. The demo needs no third-party credentials. Add money, emit merchant requests, then enable AutoPay to try the policy-controlled batch flow.
+Open `http://localhost:8080`; API docs are at `http://localhost:8000/docs`. Run `docker compose exec api python -m app.demo` to seed train, movie, electronics and food requests with an idempotent simulated opening top-up. Keep AutoPay off for the exact voice/PIN demonstration. Wallet funding and merchant settlement remain simulated. A user can prepare and review wallet payments without provider credentials using typed input; live microphone transcription requires NVIDIA configuration.
 
 Before upgrading an existing volume, back it up with `docker compose exec db pg_dump -U aiwallet aiwallet > aiwallet-backup.sql`. Compose runs `alembic upgrade head` in the `migrate` service before API and worker startup. Legacy single-row ledger records are retained as `legacy_ledger_entries` and converted to balanced journal entries during the migration. If the legacy cached balance includes historical opening funds not represented by old rows, the migration creates one explicit `MIGRATION_OPENING_BALANCE` journal transaction to preserve the balance auditably.
 

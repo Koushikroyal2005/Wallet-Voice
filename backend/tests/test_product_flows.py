@@ -134,11 +134,15 @@ def test_batch_failure_does_not_corrupt_other_payment(factory):
         before=db.scalar(select(func.count(Operation.id)))
         preview=evaluate(db)
         assert db.scalar(select(func.count(Operation.id)))==before
-        result=confirm(Batch(payment_ids=[good.id,bad.id]),db)
-        assert sorted(x['status'] for x in result['results'])==['FAILED','SUCCEEDED']
+        from app.payment_batches import create_batch,authorize,execute_batch
+        from app.execution import execute_attempt
+        b=create_batch(db,[good.id,bad.id]);token=authorize(db,b,'123456');db.commit()
+        result=execute_batch(factory,b.id,token,execute_attempt)
+        db.expire_all()
+        assert sorted(x['status'] for x in result['items'])==['FAILED','SUCCEEDED']
         assert balances(db,wallet(db))['posted_balance']==990000
         assert balances(db,wallet(db))['reserved_amount']==0
-        confirm(Batch(payment_ids=[good.id,bad.id]),db)
+        db.rollback();execute_batch(factory,b.id,token,execute_attempt)
         assert balances(db,wallet(db))['posted_balance']==990000
 
 

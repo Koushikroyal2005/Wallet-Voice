@@ -153,7 +153,9 @@ def record_capture(db,order,capture):
     elif status in {'DENIED','DECLINED','FAILED'}:
         payment.status='FAILED'
         if attempt:attempt.status='FAILED';attempt.failure_reason=f'PAYPAL_{status}'
-    elif status=='REFUNDED':payment.status='REFUNDED'
+    elif status=='REFUNDED':
+        payment.status='REFUNDED'
+        if attempt:attempt.status='REFUNDED';attempt.failure_reason=None
     if changed:emit(db,'paypal.payment.updated',{'payment_id':payment.id,'order_id':order.paypal_order_id,'status':status})
 
 def record_order_response(db,order_id,remote):
@@ -206,6 +208,9 @@ def apply_order_event(db,order,event):
         # represented here; partial refunds require capture reconciliation.
         validate_amount(order,resource.get('amount') or {})
         order.provider_status='REFUNDED';db.get(PaymentRequest,order.payment_request_id).status='REFUNDED'
+        attempt=db.get(PaymentAttempt,order.payment_attempt_id) if order.payment_attempt_id else None
+        if attempt:attempt.status='REFUNDED';attempt.failure_reason=None
+        emit(db,'paypal.payment.updated',{'payment_id':order.payment_request_id,'order_id':order.paypal_order_id,'status':'REFUNDED'})
 
 def apply_webhook(db:Session,event:dict):
     wallet(db,True)

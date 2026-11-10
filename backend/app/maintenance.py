@@ -8,6 +8,11 @@ from .execution import execute_attempt
 
 
 def tick():
+    from .reminders import schedule,deliver_one
+    with SessionLocal() as reminder_db:
+        schedule(reminder_db);reminder_db.commit()
+    for _ in range(5):
+        if not deliver_one(SessionLocal):break
     with SessionLocal() as db:
         wallet(db, True)
         for reservation in db.scalars(select(PaymentReservation).where(PaymentReservation.status == "ACTIVE")).all():

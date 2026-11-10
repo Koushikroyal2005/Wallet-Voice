@@ -34,4 +34,6 @@ def test_legacy_schema_migrates_to_balanced_journal():
             assert c.scalar(text("SELECT count(*) FROM operations WHERE reference IN ('DEMO-TOPUP','DEMO-WITHDRAW','DEMO-PAY')"))==3
     finally:
         engine.dispose()
-        with admin.connect() as c:c.execute(text(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'))
+        # Retain the uniquely named disposable DB until the isolated tmpfs stops.
+        # Never issue DROP DATABASE, TRUNCATE or reset against an existing DB.
+        admin.dispose()

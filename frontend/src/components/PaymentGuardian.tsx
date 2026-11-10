@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, operationKey, post } from '../lib/api';
 import { PayPalCheckoutPanel } from './PayPalCheckoutPanel';
+import { PaymentBatchReview } from './PaymentBatchReview';
 
 const amount = (value: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value / 100);
 const reasons: Record<string, string> = {
@@ -22,6 +23,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
+  const [exactBatch, setExactBatch] = useState<string>();
   const active = useRef(false);
   const load = async () => {
     const result = await api(`/api/payments/${paymentId}/review`);
@@ -32,7 +34,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     const refresh = async () => {
       if (running) return;
       running = true;
-      try { const result = await api(`/api/payments/${paymentId}/review`); if (!disposed) { setReview(result); setError(''); } }
+      try { const result = await api(`/api/payments/${paymentId}/review`); if (!disposed) { setReview(result); } }
       catch (e) { if (!disposed) setError((e as Error).message); }
       finally { running = false; }
     };
@@ -44,6 +46,10 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     if (active.current) return;
     active.current = true; setBusy(true); setError('');
     try {
+      if (!hold) {
+        const batch = await post('/api/payment-batches', { payment_ids: [paymentId], recognize_merchants: recognized });
+        setExactBatch(batch.id); return;
+      }
       await post(`/api/payments/${paymentId}/${hold ? 'hold' : 'pay'}`, hold ? undefined : {
         idempotency_key: operationKey(`guardian:wallet:${paymentId}`), confirm_unknown_merchant: recognized,
       });
@@ -51,6 +57,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     } catch (e) { setError((e as Error).message); setUncertain(true); await load().catch(() => undefined); }
     finally { active.current = false; setBusy(false); }
   };
+  if (exactBatch) return <PaymentBatchReview batchId={exactBatch} onChanged={onChanged} onCancel={onCancel}/>;
   if (!review?.payment) return <section className="payment-guardian" aria-label="Payment Guardian"><h3>Payment Guardian</h3><p role="status">{error || 'Checking payment details…'}</p><button className="secondary" onClick={onCancel}>Cancel review</button></section>;
   const p = review.payment;
   const locked = !!review.attempt && ['PROCESSING', 'SUCCEEDED'].includes(review.attempt.status) || !!review.paypal;
@@ -65,7 +72,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
   const held = p.explicit_hold;
   const failed = ['FAILED', 'DENIED', 'DECLINED', 'VOIDED', 'REFUNDED'].includes(status);
   const allowed = !expired && !held && !processing && !done && !locked && (!paypal ? decision.decision === 'ELIGIBLE' && p.currency === review.wallet_currency : p.status === 'PENDING' && (p.verified || recognized));
-  const title = done ? 'Payment completed' : processing ? 'Waiting for confirmation' : held ? 'Payment on hold' : expired && !locked ? 'Payment expired' : failed ? 'Payment did not complete' : 'Review your payment';
+  const title = status === 'REFUNDED' ? 'Payment refunded' : done ? 'Payment completed' : processing ? 'Waiting for confirmation' : held ? 'Payment on hold' : expired && !locked ? 'Payment expired' : failed ? 'Payment did not complete' : 'Review your payment';
   return <section className="payment-guardian" aria-label="Payment Guardian">
     <span className="eyebrow">PAYMENT GUARDIAN</span><h3 tabIndex={-1}>{title}</h3>
     <p role="status" aria-live="polite">{done ? paypal ? 'PayPal capture confirmed by the backend.' : 'Demo wallet payment recorded in the journal.' : processing ? 'The result is pending. Keep this request open; do not start another payment.' : 'Check the details. Your assistant has prepared this review for you.'}</p>

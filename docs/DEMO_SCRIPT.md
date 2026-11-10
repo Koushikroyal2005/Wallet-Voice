@@ -1,4 +1,17 @@
-# AI Wallet — 2–3 minute demo
+# Wallet-Voice V1 — reproducible demo
+
+1. Run `docker compose up --build -d` and `docker compose exec api python -m app.demo`. Existing ledger rows remain intact. The seed opening top-up is idempotent; existing merchant deadlines are not reset. Use fresh pending requests; never erase a development database for a presentation.
+2. Unlock the wallet with its configured PIN. Keep AutoPay off. Show the saved train, movie, electronics and food requests. Explain that these are demo requests, not real bookings or fulfillment.
+3. Let the worker run a pass (normally every 10 seconds). Open **Remembered for you**, then **Review now** on a deadline reminder. This opens the exact request. OS push is a separate optional setup, not assumed evidence.
+4. Choose **Talk to your wallet**, ask “Which payments are urgent?” and pause. With NVIDIA configured, recording ends on silence, transcribes and submits automatically. With no speech credentials, use **Type instead** and explain the deterministic mode in Assistant details.
+5. Say/type “Pay the train and movie tickets, not the food order.” Show the exact two items, deadlines, verified/unrecognized labels, simulated wallet source, total and projected balance. Try “Remove the movie ticket” and then prepare the two-item review again to demonstrate correction.
+6. Enter the demo wallet PIN in the review form, never in speech/chat. The approval is bound to this immutable snapshot. No extra request can be added. Complete the payment and show individual journal receipts. Food remains pending. A failed item produces PARTIAL or FAILED, never a fabricated all-success result.
+7. Open Wallet and show posted/reserved/available amounts and activity. If a review has insufficient funds, show its exact shortfall, cancel/review later, and choose **Add demo money** or **Receive ₹500 demo bank transfer**. Both are simulated bank top-ups and require PIN approval. The aggregate posted balance cannot exceed ₹1,00,000.
+8. Separately prepare ONE fresh request with PayPal Sandbox. The buyer must approve through PayPal. Only backend-confirmed capture is shown as completed. Compare the internal wallet balance before/after; PayPal never reserves/debits it. If credentials or buyer access are unavailable, say this journey is unverified and show the unavailable state.
+
+For repeatable automated evidence, run `node scripts/verify-v1.mjs` from frontend. It starts a fresh isolated actual FastAPI/SQLite server, uses a synthetic microphone transcript, and validates settlement/receipts; it is not live NVIDIA or PayPal evidence.
+
+## Earlier individual PayPal demonstration
 
 ## Primary path (credentials available)
 

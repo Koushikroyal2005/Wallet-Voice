@@ -202,6 +202,8 @@ def test_full_refund_cannot_be_regressed_by_late_completion():
     paypal.apply_webhook(s,webhook('late-complete'))
     assert o.provider_status=='REFUNDED'
     assert s.get(PaymentRequest,o.payment_request_id).status=='REFUNDED'
+    assert s.get(PaymentAttempt,o.payment_attempt_id).status=='REFUNDED'
+    assert o.paypal_capture_id=='CAP-TEST' and o.captured_at is not None
 
 
 def test_signature_success_preserves_event_for_provider_verification(monkeypatch):

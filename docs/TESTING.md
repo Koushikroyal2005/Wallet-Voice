@@ -117,3 +117,29 @@ After rebuilding, run the isolated PostgreSQL command at the top of this documen
 ## Payment Guardian verification
 
 See [PAYMENT_GUARDIAN.md](PAYMENT_GUARDIAN.md) for review behavior, changed files, actual test results and manual acceptance steps. Run the additional browser check from `frontend` with `node scripts/verify-guardian.mjs`.
+# V1 verification — 10 November 2026
+
+Run unit tests from `backend` with providers disabled and an isolated test configuration. The final local run with the Web Push dependency available recorded **197 passed, 20 skipped**; the skipped integration tests were executed separately against PostgreSQL (**20 passed**, including concurrent credits/cap, competing exact batches, duplicate confirmations, journal reconciliation and legacy migration). The integration fixtures now create fresh schemas/databases and retain them until the dedicated tmpfs service stops; no reset, TRUNCATE or DROP DATABASE command is used. `docker-compose.test.yml` runs migrations followed by pytest, without the old reset script. The PostgreSQL run used an existing dependency image with the current backend mounted read-only; a clean V1 Docker image rebuild remains a local release check.
+
+Offline Web Push encryption/VAPID signing passed using ephemeral synthetic keys and a synthetic HTTP response; this verifies the adapter contract, not OS delivery. The dependency was installed only into ignored `artifacts/v1-python-deps` for verification. Without `pywebpush` installed, that one adapter test reports a skip. Python compilation, Compose configuration and `git diff --check` passed.
+
+The production TypeScript/Vite build passed. Product fixture checks passed at 1440/1024/768/390, voice fixtures passed seven journeys, Guardian fixtures passed eight scenarios, PayPal fixtures passed seven journeys. `node scripts/verify-v1.mjs` passed a real FastAPI/isolated SQLite browser journey: login, exact reminder navigation, default voice auto-submit (synthetic STT), selection/exclusion/correction, PIN, duplicate click, two journal receipts, wallet reconciliation and untouched food request, desktop/mobile. Screenshots are generated under `artifacts/v1-review` and excluded from Git.
+
+Real microphone quality, live NVIDIA inference/transcription/playback, PayPal buyer approval/capture/webhooks and OS Web Push delivery were **not executed** for V1. No private `.env` was read. Passing fixtures never establish provider success. See [V1 limits](V1_IMPLEMENTATION.md).
+
+Commands (PowerShell, repository root):
+
+```powershell
+docker compose -p walletvoice-v1-tests -f docker-compose.yml -f docker-compose.test.yml --profile test up --build --abort-on-container-exit --exit-code-from test test
+# Stop only this isolated test project afterwards; never use down -v on development.
+docker compose -p walletvoice-v1-tests -f docker-compose.yml -f docker-compose.test.yml --profile test stop
+cd frontend
+npm.cmd run build
+node scripts/verify-product.mjs
+node scripts/verify-voice.mjs
+node scripts/verify-guardian.mjs
+node scripts/verify-paypal.mjs
+node scripts/verify-v1.mjs
+```
+
+`verify-v1.mjs` deliberately starts a new SQLite file named `v1-browser-*` in a temporary folder and refuses any existing DB. It uses synthetic PIN/configuration, disables providers and never loads private `.env`. The fixture remains in the temp folder for inspection.

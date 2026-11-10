@@ -11,6 +11,7 @@ SEED_REQUESTS=[
     ("Indian Railways","travel","Tatkal train ticket",125000,4,True),
     ("CinemaPass","entertainment","Movie ticket",60000,120,True),
     ("ElectroHub","shopping","Flexible electronics request",450000,None,False),
+    ("Demo Kitchen","food","Food order — keep for later",40000,180,True),
 ]
 def initialize_demo(*,reset:bool=False,autopay_enabled:bool=False):
     """Seed only labelled demo requests and a deterministic 10,000 INR wallet top-up."""

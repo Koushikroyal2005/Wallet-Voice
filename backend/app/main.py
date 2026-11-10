@@ -10,7 +10,7 @@ from .core import settings
 from .db import SessionLocal,get_db
 from .models import AppEvent,AutoPaySettings,AuthorizationChallenge,Conversation,ConversationMessage,JournalTransaction,LedgerEntry,Operation,PaymentAttempt,PaymentIntent,PaymentRequest,PaymentReservation,Recipient,SpendingMandate,Status
 from .providers import DemoPaymentProvider
-from .services import FinancialError,balances,batch_preview,emit,finalize,policy,reserve,settings_for,topup_or_withdraw,transition,wallet
+from .services import FinancialError,balances,batch_preview,emit,finalize,policy,reserve,settings_for,topup_or_withdraw,transition,wallet,utc
 from .voice import VoiceError,execute_tool,nemotron_intent,normalize_audio,nvidia_ready,synthesize,transcribe
 from .paypal import PayPalError,apply_webhook,browser_client_token,capture_order,configured,create_order,refresh_order,serialise,verify_webhook
 from .models import PayPalOrder
@@ -20,6 +20,10 @@ from .execution import execute_attempt
 from .access import COOKIE,issue_session,valid_session
 
 app=FastAPI(title="AI Wallet")
+from .batch_routes import router as batch_router
+app.include_router(batch_router)
+from .reminders import router as reminder_router
+app.include_router(reminder_router)
 app.add_middleware(CORSMiddleware,allow_origins=settings().web_allowed_origins.split(","),allow_methods=["*"],allow_headers=["*"])
 
 @app.middleware('http')
@@ -43,7 +47,7 @@ class MandateCreate(BaseModel):merchant:str=Field(min_length=1,max_length=120);m
 class MerchantCheckout(BaseModel):merchant:str=Field(min_length=1,max_length=120);order_reference:str=Field(min_length=3,max_length=160);amount:int=Field(gt=0,le=10_000_000);description:str=Field(default="Merchant checkout",max_length=500)
 class AutoPatch(BaseModel):enabled:bool|None=None;time_sensitive_only:bool|None=None;per_transaction_limit:int|None=Field(default=None,gt=0);daily_limit:int|None=Field(default=None,gt=0);minimum_balance:int|None=Field(default=None,ge=0);allow_unknown_merchants:bool|None=None
 class Merchant(BaseModel):type:str
-class Pay(BaseModel):idempotency_key:str|None=None;confirm_unknown_merchant:bool=False
+class Pay(BaseModel):idempotency_key:str|None=None;confirm_unknown_merchant:bool=False;batch_id:str|None=None;approval_token:str|None=None
 class Batch(BaseModel):
     idempotency_key:str|None=None
     payment_ids:list[str]|None=Field(default=None,max_length=100)
@@ -92,17 +96,20 @@ def demo_checkout_status(payment_id:str,db:Session=Depends(get_db)):
     payment=db.get(PaymentRequest,payment_id)
     if not payment or not payment.provider.startswith("MERCHANT:DEMO-"):raise HTTPException(404,"Order not found")
     return serialize(payment)
-def serialize(p:PaymentRequest):return {"id":p.id,"merchant":p.merchant,"category":p.category,"description":p.description,"amount":p.amount,"currency":p.currency,"expires_at":p.expires_at,"verified":p.verified,"provider":p.provider,"status":p.status,"explicit_hold":p.explicit_hold,"trace":p.trace}
+def serialize(p:PaymentRequest):return {"id":p.id,"merchant":p.merchant,"category":p.category,"description":p.description,"amount":p.amount,"currency":p.currency,"expires_at":utc(p.expires_at) if p.expires_at else None,"verified":p.verified,"provider":p.provider,"status":p.status,"explicit_hold":p.explicit_hold,"trace":p.trace}
 def attempt_payload(a:PaymentAttempt|None):return None if not a else {"id":a.id,"status":a.status,"provider_reference":a.provider_reference,"failure_reason":a.failure_reason}
 def do_payment(payment_id:str,data:Pay):
     """Commit reservation before provider call; finalize in a fresh transaction."""
-    key=data.idempotency_key or f"manual:{payment_id}"
-    with SessionLocal() as db:
-        p=db.get(PaymentRequest,payment_id)
-        if not p:raise HTTPException(404,"Payment request not found")
-        try:a=reserve(db,p,key,"manual",data.confirm_unknown_merchant);db.commit();attempt_id=a.id
-        except FinancialError as e:db.rollback();raise HTTPException(409,str(e))
-    return attempt_payload(execute_attempt(attempt_id))
+    if not data.batch_id or not data.approval_token:
+        raise HTTPException(403,'Review this exact payment and approve with your wallet PIN first')
+    from .payment_batches import execute_batch,get_batch
+    try:
+        with SessionLocal() as db:
+            batch=get_batch(db,data.batch_id)
+            if [i['id'] for i in batch.snapshot['items']]!=[payment_id]:raise HTTPException(409,'Approval must contain exactly this payment')
+        result=execute_batch(SessionLocal,data.batch_id,data.approval_token,execute_attempt)
+        with SessionLocal() as db:return attempt_payload(db.get(PaymentAttempt,result['items'][0]['attempt_id']))
+    except (FinancialError,AuthorizationError) as e:raise HTTPException(409,str(e))
 @app.get("/health")
 def health():return {"status":"ok","demo_mode":settings().demo_mode}
 @app.get("/api/assistant/status")
@@ -346,7 +353,7 @@ def merchant(data:Merchant,db:Session=Depends(get_db)):
 @app.get("/api/payment-requests")
 def payments(db:Session=Depends(get_db)):
     rows=db.scalars(select(PaymentRequest).order_by(PaymentRequest.created_at.desc())).all()
-    external=set(db.scalars(select(PaymentAttempt.payment_request_id).where(PaymentAttempt.reservation_id.is_(None),PaymentAttempt.status.in_(["PROCESSING","SUCCEEDED"]))).all())
+    external=set(db.scalars(select(PaymentAttempt.payment_request_id).where(PaymentAttempt.reservation_id.is_(None),PaymentAttempt.status.in_(["PROCESSING","SUCCEEDED","REFUNDED"]))).all())
     return [{**serialize(p),"trace":policy(db,p,"auto"),"payment_source":"PAYPAL_SANDBOX" if p.id in external else "AI_WALLET"} for p in rows]
 @app.post("/api/payments/{payment_id}/pay")
 def pay(payment_id:str,data:Pay=Pay()):return do_payment(payment_id,data)
@@ -367,7 +374,7 @@ def payment_review(payment_id:str,db:Session=Depends(get_db)):
     if a:
         external=not a.reservation_id
         result['receipt']={'payment_id':p.id,'attempt_id':a.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,
-            'funding_source':'PAYPAL_SANDBOX' if external else 'AI_WALLET','status':a.status,
+            'funding_source':'PAYPAL_SANDBOX' if external else 'AI_WALLET','status':'REFUNDED' if external and order and order.provider_status=='REFUNDED' else a.status,
             'timestamp':order.captured_at or order.updated_at if external and order else journal.created_at if journal else a.created_at,
             'timestamp_label':'Capture recorded' if external and order and order.captured_at else 'Journal posted' if journal else 'Record timestamp',
             'provider_reference':a.provider_reference,'journal_id':journal.id if journal else None,
@@ -394,26 +401,7 @@ def evaluate(db:Session=Depends(get_db)):
     result=batch_preview(db);db.rollback();return result
 @app.post("/api/payments/batch/confirm")
 def confirm(data:Batch=Batch(),db:Session=Depends(get_db)):
-    wallet(db,True)
-    # A stable per-request key makes a duplicate confirmation non-debiting.
-    query=select(PaymentRequest).where(PaymentRequest.status.in_(["PENDING","HELD"]),PaymentRequest.explicit_hold.is_(False))
-    if data.payment_ids is not None:query=query.where(PaymentRequest.id.in_(data.payment_ids))
-    rows=db.scalars(query).all();eligible=[]
-    for p in rows:
-        d=policy(db,p,"manual")
-        if d["decision"]=="ELIGIBLE":eligible.append(p)
-    w=wallet(db,True);required=sum(p.amount for p in eligible);available=balances(db,w)["available_balance"]
-    if required>available:raise HTTPException(409,{"reason":"INSUFFICIENT_BATCH_BALANCE","required":required,"available":available})
-    attempts=[]
-    try:
-        for p in eligible:attempts.append(reserve(db,p,f"batch:{p.id}","manual"))
-        db.commit()
-    except FinancialError as e:db.rollback();raise HTTPException(409,str(e))
-    results=[]
-    ids=[attempt.id for attempt in attempts];db.rollback()
-    for attempt_id in ids:
-        results.append(attempt_payload(execute_attempt(attempt_id)))
-    return {"results":results,"paid":[r["id"] for r in results if r["status"]=="SUCCEEDED"],"count":len(results),"is_demo":True}
+    raise HTTPException(403,'Prepare an exact /api/payment-batches review and approve with your wallet PIN')
 @app.get("/api/events/stream")
 async def stream(request:Request,last_event_id:str|None=None):
     cursor=last_event_id or request.headers.get("last-event-id")

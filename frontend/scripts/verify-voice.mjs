@@ -12,7 +12,8 @@ try {
   for(const scenario of ['review','close-upload','switch-upload','close-listening','auto-send-opt-in','retry','interrupt-playback']) {
     const page=await browser.newPage();const requests=[];const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.addInitScript(()=>{
+    await page.addInitScript((scenario)=>{
+      localStorage.setItem('wallet-review-transcript',scenario==='review'?'on':'off');
       window.__voice={stops:0,spoken:0};
       window.EventSource=class{close(){}};
       window.speechSynthesis.speak=()=>{window.__voice.spoken++;};
@@ -28,7 +29,7 @@ try {
         createAnalyser(){return {fftSize:2048,getFloatTimeDomainData:array=>array.fill(0)};}
         createMediaStreamSource(){return {connect(){}};}
       };
-    });
+    },scenario);
     await page.route('https://**/*',route=>route.abort());
     await page.route('**/api/**',async route=>{
       const path=new URL(route.request().url()).pathname;
@@ -56,6 +57,7 @@ try {
     if(['retry','interrupt-playback','auto-send-opt-in'].includes(scenario))await page.getByRole('button',{name:'Type instead',exact:true}).click();
     else await page.getByRole('button',{name:'Talk to your wallet',exact:true}).click();
     if(scenario==='auto-send-opt-in'){
+      await page.getByText('Assistant details and voice preferences',{exact:true}).click();
       await page.getByLabel('Review transcript before sending').uncheck();
       await page.getByRole('button',{name:'Voice',exact:true}).click();
     }
@@ -92,6 +94,7 @@ try {
       assert.ok(await page.getByRole('button',{name:'Confirm action',exact:true}).isEnabled());
       assert.equal(requests.filter(r=>r.path==='/api/assistant/turn').length,scenario==='retry'?2:1);
       assert.equal(requests.filter(r=>r.path==='/api/voice/synthesize').length,0,'No automatic playback by default');
+      if(!await page.getByLabel('Assistant provider').isVisible()) await page.getByText('Assistant details and voice preferences',{exact:true}).click();
       if(scenario==='auto-send-opt-in')await page.getByText(/Reasoning: deterministic demo parser/).waitFor();
       else await page.getByText(/Reasoning: NVIDIA Nemotron/).waitFor();
       if(scenario==='interrupt-playback'){

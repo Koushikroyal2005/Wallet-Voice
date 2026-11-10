@@ -20,8 +20,6 @@ pytestmark=pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'),reason='require
 
 @pytest.fixture(autouse=True)
 def isolated_executors(factory,monkeypatch):
-    with factory() as db:
-        db.execute(text('TRUNCATE authorization_challenges, wallet_security, spending_mandates RESTART IDENTITY CASCADE'));db.commit()
     for module in ['app.main','app.execution','app.maintenance']:monkeypatch.setattr(f'{module}.SessionLocal',factory)
 
 
@@ -42,8 +40,12 @@ def setup_payment(factory,amount=100000):
 
 def test_duplicate_batch_confirmation_executes_one_journal(factory):
     pid=setup_payment(factory)
+    from app.payment_batches import create_batch,authorize,execute_batch
+    from app.execution import execute_attempt
+    with factory() as db:
+        batch=create_batch(db,[pid]);token=authorize(db,batch,'123456');db.commit();ident=batch.id
     def run():
-        with factory() as db:return confirm(Batch(payment_ids=[pid]),db)
+        return execute_batch(factory,ident,token,execute_attempt)
     parallel(run,run)
     with factory() as db:
         assert db.scalar(select(func.count(Operation.id)).where(Operation.kind=='PAYMENT'))==1

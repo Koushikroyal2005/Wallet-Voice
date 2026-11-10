@@ -75,8 +75,14 @@ def policy(db:Session,p:PaymentRequest,mode="auto",merchant_confirmed=False):
     elif mode=="auto" and s.time_sensitive_only and urgency=="FLEXIBLE":codes.append("TIME_SENSITIVE_ONLY");decision="HELD_FLEXIBLE"
     return {"policy_version":"financial-v2","mode":mode,"decision":decision,"reason_codes":codes,"urgency":urgency,"remaining_seconds":max(0,int(remaining)) if remaining is not None else None,"merchant_verified":p.verified,"transaction_amount":p.amount,"daily_spend":day_spend(db,w),**b,"settings":{"enabled":s.enabled,"time_sensitive_only":s.time_sensitive_only,"minimum_balance":s.minimum_balance,"daily_limit":s.daily_limit}}
 def post_journal(db:Session,w:Wallet,op:Operation,debit:LedgerAccount,credit:LedgerAccount,description:str):
+    # Every incoming journal credit, including future demo rails, shares this cap.
+    # Callers serialize on the wallet; acquire it here as a defence in depth.
+    wallet(db,True)
+    db.flush()  # Include earlier credits posted within this same transaction.
     existing=db.scalar(select(JournalTransaction).where(JournalTransaction.operation_id==op.id))
     if existing:return existing
+    if credit.id==w.ledger_account_id and posted_balance(db,w)+op.amount>10_000_000:
+        raise FinancialError('Demo wallet maximum is INR 100,000. Withdraw funds before receiving more.')
     j=JournalTransaction(operation_id=op.id,description=description,reference=op.reference);db.add(j);db.flush();db.add_all([LedgerEntry(journal_transaction_id=j.id,ledger_account_id=debit.id,direction="DEBIT",amount=op.amount,currency=w.currency),LedgerEntry(journal_transaction_id=j.id,ledger_account_id=credit.id,direction="CREDIT",amount=op.amount,currency=w.currency)])
     w.cached_balance=posted_balance(db,w)+(op.amount if credit.id==w.ledger_account_id else -op.amount if debit.id==w.ledger_account_id else 0);return j
 
@@ -145,4 +151,6 @@ def finalize(db:Session,attempt_id:str,success:bool,reference:str,reason:str|Non
         if mandate and (mandate.context or {}).get("usage_date")==trace.get("mandate_day"):mandate.spent_today=max(0,mandate.spent_today-p.amount)
         trace["allowance_released"]=True;p.trace=trace
     db.flush()
+    from .payment_batches import reconcile_for_attempt
+    reconcile_for_attempt(db,a.id)
     return a
