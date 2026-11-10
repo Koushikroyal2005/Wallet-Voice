@@ -11,7 +11,9 @@ def utc(value):return value if value.tzinfo else value.replace(tzinfo=timezone.u
 class FinancialError(ValueError): pass
 class TransitionError(FinancialError): pass
 ALLOWED={"PENDING":{"HELD","PROCESSING","EXPIRED","CANCELLED"},"HELD":{"PENDING","PROCESSING","EXPIRED","CANCELLED"},"PROCESSING":{"SUCCEEDED","FAILED"},"FAILED":{"PROCESSING","EXPIRED","CANCELLED"},"SUCCEEDED":{"REFUNDED"}}
-def emit(db:Session,event_type:str,payload:dict): db.add(AppEvent(event_type=event_type,payload=payload))
+def emit(db:Session,event_type:str,payload:dict):
+    from .audit import queue
+    db.add(AppEvent(event_type=event_type,payload=payload));queue(db,event_type,payload)
 def transition(p:PaymentRequest,target:str):
     if p.status==target:return
     if target not in ALLOWED.get(p.status,set()):raise TransitionError(f"Invalid payment transition {p.status} → {target}")
@@ -123,7 +125,9 @@ def automatic_mandate(db,p,lock=True):
     # Identity is bound to the authenticated ingestion path, never a display name alone.
     if not p.provider.startswith('MERCHANT:'):return None
     from .agentic import mandate_for
-    return mandate_for(db,p.merchant,p.amount,lock)
+    from .mandate_authority import recipient_matches
+    row=mandate_for(db,p.merchant,p.amount,lock,(p.trace or {}).get('merchant_id'))
+    return row if row and recipient_matches(db,row,p) else None
 
 def reserve(db:Session,p:PaymentRequest,key:str,mode:str,confirm_unknown=False):
     db.flush()

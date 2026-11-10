@@ -45,6 +45,7 @@ await page.route('**/api/**', async route => {
   else if (path === '/api/wallet/transactions') result = activities;
   else if (path === '/api/wallet/reservations') result = [];
   else if (path === '/api/mandates') result = [];
+  else if (path === '/api/merchants') result = [{id:'fixture-rail',name:'Indian Railways'}];
   else if (path === '/api/autopay/settings') result = { enabled: false, time_sensitive_only: true, per_transaction_limit: 500000, daily_limit: 1000000, minimum_balance: 10000 };
   else if (path === '/api/recipients') { if (request.method() === 'POST') { result = { ...body, id: 'asha' }; people.push(result); } else result = people; }
   else if (path === '/api/payment-intents') { if (request.method() === 'POST') { result = { ...body, id: 'draft', status: 'DRAFT', version: 1 }; drafts.push(result); } else result = drafts; }
@@ -66,7 +67,7 @@ try {
   await page.screenshot({path:resolve(output,'unlock-desktop.png'),fullPage:true});
   await page.getByLabel('Wallet PIN',{exact:true}).fill('123456');
   await page.getByRole('button',{name:'Unlock wallet'}).click();
-  await page.getByRole('heading', { name: 'Money moves. On your terms.' }).waitFor();
+  await page.getByRole('heading', { name: 'Talk to your wallet.' }).waitFor();
   async function screen(name) {
     if(!name.startsWith('guardian-'))await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: false, animations:'disabled' });
@@ -118,6 +119,7 @@ try {
   assert.equal(await page.getByRole('button',{name:'Choose a business',exact:true}).count(),0);
   await page.getByRole('button',{name:'Auto-pay',exact:true}).click();
   await page.getByRole('button',{name:'Choose a business'}).click();
+  await page.getByRole('combobox').selectOption('fixture-rail');
   await page.getByRole('button',{name:'Review checkout approval'}).click();
   await page.getByRole('dialog').getByText('Indian Railways',{exact:true}).waitFor();
   await page.getByRole('dialog').getByText('Maximum in one day',{exact:true}).waitFor();

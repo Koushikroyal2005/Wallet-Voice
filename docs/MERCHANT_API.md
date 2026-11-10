@@ -2,6 +2,8 @@
 
 This local integration contract is not a real railway/food integration. Amounts are integer INR paise. PayPal Sandbox remains separately approved. Payment does not prove booking or delivery.
 
+V3 owner permissions bind automatic spending to the stable authenticated merchant ID, current identity record, PIN-approved limits and expiry. Display names alone grant no authority. Existing null-ID legacy demo permissions are not migrated to versioned merchants. The merchant API cannot select an arbitrary customer wallet: this remains an explicitly single-owner demo. Future customer checkout linking requires authenticated, scoped, expiring customer consent tokens; see `V3_IMPLEMENTATION.md`.
+
 Operator: run `python -m app.provision_merchants` after migration. It creates `demo-railway` and `demo-food`, returns generated secrets once and stores only SHA-256 hashes. Save secrets in the appropriate merchant server configuration. Re-running refuses to overwrite existing identities. Credentials stay out of browser JavaScript and logs. Use HTTPS beyond localhost. Operators can revoke identity access using its `active` flag; no production onboarding/rotation portal is included.
 
 Every `/api/merchant/v1/...` request requires `X-Merchant-Id` and `X-Merchant-Key`. Wallet login does not grant merchant access. Missing/invalid credentials return 422/401; cross-merchant access returns 404. Creation rate is limited to 30 new requests per merchant per minute. Edge-level abuse protection is required for a public deployment.

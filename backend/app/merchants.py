@@ -89,7 +89,8 @@ def fulfill(reference:str,merchant=Depends(authenticate),db=Depends(get_db)):
     wallet(db,True)
     order=owned(db,merchant,reference=reference)
     if result(db,order)['payment_status']!='SUCCEEDED':raise HTTPException(409,'Payment must be confirmed before fulfillment')
-    if not order.fulfilled_at:order.fulfilled_at=datetime.now(timezone.utc)
+    if not order.fulfilled_at:
+        order.fulfilled_at=datetime.now(timezone.utc);emit(db,'merchant.fulfillment.confirmed',{'merchant_id':merchant.id,'payment_id':order.payment_request_id,'order_id':order.id})
     db.commit();return result(db,order)
 
 @router.post('/orders/{reference}/cancel')

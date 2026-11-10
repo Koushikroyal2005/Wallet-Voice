@@ -19,6 +19,13 @@ class MerchantIdentity(Base):
     secret_hash: Mapped[str]=mapped_column(String(64))
     active: Mapped[bool]=mapped_column(Boolean,default=True)
 
+class AttentionState(Base):
+    __tablename__='attention_states'
+    payment_request_id: Mapped[str]=mapped_column(ForeignKey('payment_requests.id'),primary_key=True)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user')
+    dismissed: Mapped[bool]=mapped_column(Boolean,default=False)
+    snoozed_until: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+
 class MerchantOrder(Base):
     __tablename__='merchant_orders'
     __table_args__=(UniqueConstraint('merchant_id','reference'),UniqueConstraint('merchant_id','idempotency_key'))
@@ -90,6 +97,7 @@ class PaymentIntent(Base):
     id: Mapped[str]=mapped_column(String,primary_key=True,default=uid); user_id: Mapped[str]=mapped_column(String,default="demo-user",index=True); kind: Mapped[str]=mapped_column(String,default="P2P"); recipient_id: Mapped[str|None]=mapped_column(ForeignKey("recipients.id"),nullable=True); merchant: Mapped[str|None]=mapped_column(String,nullable=True); amount: Mapped[int]=mapped_column(Integer); currency: Mapped[str]=mapped_column(String(3),default="INR"); note: Mapped[str|None]=mapped_column(String,nullable=True); source: Mapped[str]=mapped_column(String,default="AI_WALLET"); status: Mapped[str]=mapped_column(String,default="DRAFT"); version: Mapped[int]=mapped_column(Integer,default=1); execute_after: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True); expires_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True); payment_request_id: Mapped[str|None]=mapped_column(ForeignKey("payment_requests.id"),nullable=True); created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now); updated_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now,onupdate=now)
 class SpendingMandate(Base):
     __tablename__="spending_mandates"
+    merchant_id: Mapped[str|None]=mapped_column(String,nullable=True)
     id: Mapped[str]=mapped_column(String,primary_key=True,default=uid); user_id: Mapped[str]=mapped_column(String,default="demo-user",index=True); merchant: Mapped[str]=mapped_column(String,index=True); max_amount: Mapped[int]=mapped_column(Integer); daily_limit: Mapped[int]=mapped_column(Integer); spent_today: Mapped[int]=mapped_column(Integer,default=0); context: Mapped[dict]=mapped_column(JSON,default=dict); status: Mapped[str]=mapped_column(String,default="ACTIVE"); expires_at: Mapped[datetime]=mapped_column(DateTime(timezone=True)); created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 
 class PaymentBatch(Base):

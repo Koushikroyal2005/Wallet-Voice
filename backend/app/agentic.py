@@ -70,7 +70,7 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     context=dict(row.context or {})
     if intent.tool=='get_payment_details' and intent.args.get('payment_id'):row.selected_payment_id=intent.args['payment_id']
     if preview and preview.get('batch_id'):context['batch_id']=preview['batch_id']
-    if text.strip().lower().rstrip('.!?') in {'cancel','stop','no'}:
+    if text.strip().lower().rstrip('.!?') in {'cancel','stop','no','cancel this review','cancel the review'}:
         from .batch_voice import retire
         retire(db,previous_batch_id)
         context.pop('batch_id',None)
@@ -80,7 +80,7 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     if preview and preview.get('payment_id'):
         row.selected_payment_id=preview['payment_id']
         if preview.get('payment_source'):context['selected_source']=preview['payment_source']
-    if intent.tool in {'list_payment_requests','get_urgent_payment_requests'} or outcome.get('ambiguous'):
+    if intent.tool in {'list_payment_requests','get_urgent_payment_requests','get_payment_attention','get_next_checkout'} or outcome.get('ambiguous'):
         context['listed_payment_ids']=[item['id'] for item in outcome.get('data',[])]
         row.selected_payment_id=context['listed_payment_ids'][0] if len(context['listed_payment_ids'])==1 else None
     context['preview']=preview
@@ -97,15 +97,14 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     return result
 def create_draft(db:Session,amount:int,recipient:Recipient|None=None,merchant:str|None=None,note:str|None=None)->PaymentIntent:
     row=PaymentIntent(amount=amount,recipient_id=recipient.id if recipient else None,merchant=merchant,note=note,status="DRAFT");db.add(row);db.flush();return row
-def mandate_for(db:Session,merchant:str,amount:int,lock=True)->SpendingMandate|None:
+def mandate_for(db:Session,merchant:str,amount:int,lock=True,merchant_id=None)->SpendingMandate|None:
+    if merchant_id is None and (not settings().demo_mode or merchant!=settings().demo_merchant_name):return None
     now=datetime.now(timezone.utc);today=now.astimezone(ZoneInfo(settings().app_timezone)).date().isoformat()
-    query=select(SpendingMandate).where(SpendingMandate.merchant==merchant,SpendingMandate.user_id=='demo-user',SpendingMandate.status=='ACTIVE',SpendingMandate.expires_at>now,SpendingMandate.max_amount>=amount).order_by(SpendingMandate.created_at.desc())
+    query=select(SpendingMandate).where(SpendingMandate.merchant==merchant,SpendingMandate.merchant_id==merchant_id,SpendingMandate.user_id=='demo-user',SpendingMandate.status=='ACTIVE',SpendingMandate.expires_at>now,SpendingMandate.max_amount>=amount).order_by(SpendingMandate.created_at.desc())
     row=db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
     if not row:return None
-    from .models import AuthorizationChallenge
-    expected={'merchant':merchant,'daily_limit':row.daily_limit,'expires_at':int(row.expires_at.replace(tzinfo=row.expires_at.tzinfo or timezone.utc).timestamp())}
-    approvals=db.scalars(select(AuthorizationChallenge).where(AuthorizationChallenge.action=='MANDATE',AuthorizationChallenge.resource_id==merchant,AuthorizationChallenge.amount==row.max_amount,AuthorizationChallenge.status=='CONSUMED',AuthorizationChallenge.user_id==row.user_id)).all()
-    if not any(approval.details==expected for approval in approvals):return None
+    from .mandate_authority import evidence
+    if not evidence(db,row):return None
     context=row.context or {}
     spent=row.spent_today if context.get("usage_date")==today else 0
     if spent+amount>row.daily_limit:return None

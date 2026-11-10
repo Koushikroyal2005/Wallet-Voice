@@ -108,3 +108,7 @@ Implemented exact persisted batch reviews, immutable snapshots/hash, per-batch P
 # V2 implementation update — 2026-11-10
 
 Core authenticated merchant-to-wallet journey and V1.1 corrections implemented; no commit/push. See [V2 checklist, changed files and measured results](docs/V2_IMPLEMENTATION.md). Merchant provisioning, immutable checkout ingestion, PIN-bound batch settlement, polling and separate fulfillment are local simulations. Live NVIDIA, OS notifications and PayPal buyer journey were not exercised in this phase. Development Docker images require the owner's normal rebuild.
+
+## V3 — 2026-11-10
+
+Stable-ID merchant authority, independent saved-payment memory, non-financial snooze/dismiss/restore, inline Voice Home, conversational corrections, typed uncertainty handling, committed lifecycle logs and secret-free CI implemented. Existing journal/authorization/reservation/PayPal separation remains in place. Measured full backend run: 251 passed, 1 optional adapter skipped; expanded PostgreSQL run: 34 passed. Actual local A/B/C browser journey passed with synthetic STT/uncertainty only. Final affected checks and explicit unexecuted live-provider/physical-device/CI checks: [V3 execution record](docs/V3_IMPLEMENTATION.md). V3 changes remain uncommitted for owner review.

@@ -49,7 +49,7 @@ class PinChange(BaseModel):current_pin:str=Field(pattern=r"^\d{6}$");new_pin:str
 class RecipientCreate(BaseModel):name:str=Field(min_length=1,max_length=120);handle:str=Field(min_length=3,max_length=160);handle_type:str=Field(default="PHONE",pattern=r"^(PHONE|EMAIL|PAYPAL_ID)$")
 class IntentCreate(BaseModel):amount:int=Field(gt=0,le=10_000_000);recipient_id:str|None=None;merchant:str|None=Field(default=None,max_length=120);note:str|None=Field(default=None,max_length=500);source:str=Field(default="AI_WALLET",pattern=r"^(AI_WALLET|PAYPAL_SANDBOX)$")
 class IntentExecute(BaseModel):approval_token:str=Field(min_length=20,max_length=255);idempotency_key:str=Field(min_length=8,max_length=255)
-class MandateCreate(BaseModel):merchant:str=Field(min_length=1,max_length=120);max_amount:int=Field(gt=0);daily_limit:int=Field(gt=0);expires_at:datetime;approval_token:str=Field(min_length=20,max_length=255)
+class MandateCreate(BaseModel):merchant:str=Field(min_length=1,max_length=120);merchant_id:str|None=Field(default=None,max_length=120);legacy_demo:bool=False;max_amount:int=Field(gt=0);daily_limit:int=Field(gt=0);expires_at:datetime;approval_token:str=Field(min_length=20,max_length=255)
 class MerchantCheckout(BaseModel):merchant:str=Field(min_length=1,max_length=120);order_reference:str=Field(min_length=3,max_length=160);amount:int=Field(gt=0,le=10_000_000);description:str=Field(default="Merchant checkout",max_length=500);expires_at:datetime|None=None
 class AutoPatch(BaseModel):enabled:bool|None=None;time_sensitive_only:bool|None=None;per_transaction_limit:int|None=Field(default=None,gt=0);daily_limit:int|None=Field(default=None,gt=0);minimum_balance:int|None=Field(default=None,ge=0);allow_unknown_merchants:bool|None=None
 class Merchant(BaseModel):type:str
@@ -304,16 +304,28 @@ def execute_intent(intent_id:str,data:IntentExecute,db:Session=Depends(get_db)):
 def mandates(db:Session=Depends(get_db)):
     from zoneinfo import ZoneInfo
     today=datetime.now(ZoneInfo(settings().app_timezone)).date().isoformat()
-    return [{"id":m.id,"merchant":m.merchant,"max_amount":m.max_amount,"daily_limit":m.daily_limit,"spent_today":m.spent_today if (m.context or {}).get('usage_date')==today else 0,"status":m.status,"expires_at":m.expires_at} for m in db.scalars(select(SpendingMandate).order_by(SpendingMandate.created_at.desc())).all()]
+    return [{"id":m.id,"merchant":m.merchant,"merchant_id":m.merchant_id,"compatibility":"IDENTITY_BOUND" if m.merchant_id else "LEGACY_DEMO_ONLY","max_amount":m.max_amount,"daily_limit":m.daily_limit,"spent_today":m.spent_today if (m.context or {}).get('usage_date')==today else 0,"status":m.status,"expires_at":utc(m.expires_at)} for m in db.scalars(select(SpendingMandate).order_by(SpendingMandate.created_at.desc())).all()]
 @app.post("/api/mandates")
 def add_mandate(data:MandateCreate,db:Session=Depends(get_db)):
+    wallet(db,True)
+    if data.merchant_id:
+        from .models import MerchantIdentity
+        merchant=db.get(MerchantIdentity,data.merchant_id)
+        if not merchant or not merchant.active or merchant.name!=data.merchant:raise HTTPException(422,'Choose an active authenticated merchant identity')
+    elif not (data.legacy_demo and settings().demo_mode and data.merchant==settings().demo_merchant_name):raise HTTPException(422,'Select a stable merchant identity; legacy demo authority must be explicit')
     if data.expires_at.tzinfo is None:raise HTTPException(422,"Include a timezone with the expiry")
     if data.daily_limit<data.max_amount:raise HTTPException(422,"Daily limit must cover the maximum payment")
     details={"merchant":data.merchant,"daily_limit":data.daily_limit,"expires_at":int(data.expires_at.timestamp())}
-    try:consume_approval(db,data.approval_token,"MANDATE",data.max_amount,data.merchant,details)
+    if data.merchant_id:details['merchant_id']=data.merchant_id
+    try:consume_approval(db,data.approval_token,"MANDATE",data.max_amount,data.merchant_id or data.merchant,details)
     except AuthorizationError as e:db.rollback();raise HTTPException(409,str(e))
     if data.expires_at<=datetime.now(timezone.utc):raise HTTPException(422,"Mandate expiry must be in the future")
-    row=SpendingMandate(merchant=data.merchant,max_amount=data.max_amount,daily_limit=data.daily_limit,expires_at=data.expires_at);db.add(row);db.commit();return {"id":row.id,"status":row.status}
+    row=SpendingMandate(merchant=data.merchant,merchant_id=data.merchant_id,max_amount=data.max_amount,daily_limit=data.daily_limit,expires_at=data.expires_at);db.add(row);db.commit();return {"id":row.id,"status":row.status}
+
+@app.get('/api/merchants')
+def available_merchants(db:Session=Depends(get_db)):
+    from .models import MerchantIdentity
+    return [{'id':m.id,'name':m.name,'mode':'SIMULATED'} for m in db.scalars(select(MerchantIdentity).where(MerchantIdentity.active.is_(True)))]
 @app.post("/api/mandates/{mandate_id}/revoke")
 def revoke_mandate(mandate_id:str,db:Session=Depends(get_db)):
     wallet(db,True)

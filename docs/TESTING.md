@@ -148,3 +148,11 @@ node scripts/verify-v1.mjs
 See [the V2 execution record](V2_IMPLEMENTATION.md#verification-2026-11-10) for actual results and resolved harness failures. Run the new local browser journey from `frontend` with `node scripts/verify-v2.mjs`. It starts a fresh isolated SQLite backend, verifies an actual process restart, uses real merchant and financial HTTP routes, and never loads private `.env` credentials. It also opens both local merchant servers at test-only ports. This is not live NVIDIA/PayPal evidence.
 
 The full backend test-image run also needs the public root `.env.example` mounted at `/.env.example` because an existing configuration test resolves that path from `/app/tests`. Do not mount private `.env`. Financial integration tests still require the dedicated `aiwallet_test@test-db` database and create fresh per-test schemas; never substitute a development URL.
+
+## V3 verification
+
+See [the V3 execution record](V3_IMPLEMENTATION.md) for current results and limits. The full measured backend run passed 251 tests with one optional Web Push adapter skip. The expanded isolated PostgreSQL suite passed 34 tests. Final affected snapshot/identity checks and browser results are recorded in that execution record rather than silently combined into a fictitious single run.
+
+From `frontend`, `node scripts/verify-v3.mjs` starts a fresh `v3-browser-*` database, disables credential loading/providers, and runs the forgotten-checkout, conversational-batch, and shortfall/uncertainty journeys against actual FastAPI financial endpoints. Only STT and one-shot adapter uncertainty are synthetic. Its test-only worker-tick endpoint exists solely in `backend/scripts/serve_v3_verification.py`, not production routes. Do not run that fixture server as the application.
+
+The new GitHub Actions workflow uses disposable PostgreSQL and secret-free provider fixtures. YAML was parsed locally; GitHub-hosted execution remains unexecuted until an owner-approved push.

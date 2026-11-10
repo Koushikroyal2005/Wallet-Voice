@@ -13,6 +13,7 @@ import { PaymentGuardian } from "./PaymentGuardian";
 import { PaymentBatchReview } from "./PaymentBatchReview";
 import { WalletPinDialog } from "./WalletPinDialog";
 import { WalletCompanion } from "./WalletCompanion";
+import { ConversationPayments } from './ConversationPayments';
 import { money } from "../lib/formatting";
 import { api, operationKey, finishOperation } from "../lib/api";
 
@@ -56,10 +57,10 @@ const stateCopy: Record<VoiceState, string> = {
   UPLOADING: "Preparing audio",
   TRANSCRIBING: "Transcribing",
   TRANSCRIPT_READY: "Transcript ready",
-  THINKING: "Thinking",
-  ACTION_PREVIEW: "Waiting for confirmation",
+  THINKING: "Understanding your request",
+  ACTION_PREVIEW: "Review and approve securely",
   SPEAKING: "Speaking",
-  COMPLETED: "Response complete",
+  COMPLETED: "Response ready",
   ERROR: "Needs attention",
 };
 
@@ -351,12 +352,15 @@ export function VoiceAssistantPanel({
         const began = performance.now();
         let lastSpeech = began;
         let voicedFrames = 0;
+        let noiseFloor = 0.004;
         silenceTimer.current = window.setInterval(() => {
           analyser.getFloatTimeDomainData(samples);
           const rms = Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);
           setLevel(Math.min(1, rms * 15));
           const now = performance.now();
-          if (rms > 0.018) { voicedFrames++; lastSpeech = now; }
+          const threshold = Math.max(0.01, Math.min(0.05, noiseFloor * 2.8));
+          if (rms < threshold) noiseFloor = noiseFloor * 0.94 + rms * 0.06;
+          if (rms > threshold) { voicedFrames++; lastSpeech = now; }
           if (voicedFrames >= 3 && now - lastSpeech > (patientListening ? 2600 : 1600)) stop();
           else if (!voicedFrames && now - began > 10000) {
             nextRecorder.onstop = null;
@@ -531,8 +535,9 @@ export function VoiceAssistantPanel({
         </button>
       </div>
       <div className="assistant-progress" role="status" aria-live="polite">{stateCopy[state]}{state === "RECORDING" ? " — pause when you’re finished" : ""}</div>
+      {!preview && <div className="conversation-suggestions"><button className="secondary" disabled={busy || state==='RECORDING'} onClick={()=>void ask('What payments need my attention?')}>What needs attention?</button><button className="secondary" disabled={busy || state==='RECORDING'} onClick={()=>void ask('Which checkout expires first?')}>Next deadline</button></div>}
       {preview?.kind === "payment_batch" && preview.batch_id && <PaymentBatchReview key={preview.batch_id} batchId={preview.batch_id} onChanged={onConfirmed} onCancel={() => { setPreview(undefined); void ask('cancel'); }}/ >}
-      <details className="assistant-technical"><summary>Assistant details and voice preferences</summary><p className="assistant-privacy" aria-label="Assistant provider">{provider === "nvidia-nemotron" ? "Reasoning: NVIDIA Nemotron" : provider === "demo-parser" ? "Reasoning: deterministic demo parser (NVIDIA was not used)" : provider === "context-resolver" ? "Reasoning: saved conversation context (no model call this turn)" : "Reasoning: no provider result yet"}{speechProvider && ` · Last transcription: ${speechProvider}`}{playbackProvider && ` · Last playback: ${playbackProvider}`}</p>
+      <details className="assistant-technical"><summary>Assistant details and voice preferences</summary><p className="assistant-privacy" aria-label="Assistant provider">{provider === "nvidia-nemotron" ? "Reasoning: NVIDIA Nemotron" : provider === "demo-parser" ? "Reasoning: deterministic demo parser (NVIDIA was not used)" : provider === "context-resolver" ? "Reasoning: saved conversation context and backend facts (no model call this turn)" : "Reasoning: no provider result yet"}{speechProvider && ` · Last transcription: ${speechProvider}`}{playbackProvider && ` · Last playback: ${playbackProvider}`}</p>
       <label className="assistant-privacy"><input type="checkbox" checked={reviewTranscript} disabled={state === "RECORDING" || busy} onChange={event => { setReviewTranscript(event.target.checked); localStorage.setItem("wallet-review-transcript", event.target.checked ? "on" : "off"); }}/> Review transcript before sending</label>
       <label className="assistant-privacy"><input type="checkbox" checked={readReplies} onChange={event => { setReadReplies(event.target.checked); if (!event.target.checked) stopVoice(); }}/> Read replies aloud in voice mode</label>
       </details>
@@ -599,20 +604,7 @@ export function VoiceAssistantPanel({
           <small>Voice input never authorizes a financial action.</small>
         </div>
       </div>
-      {dataRows.length > 0 && (
-        <div className="assistant-data">
-          {dataRows.slice(0, 8).map((item, index) => (
-            <div key={item.id || index}>
-              <span>{item.merchant || item.kind || "Payment"}</span>
-              <strong>
-                {typeof item.amount === "number"
-                  ? item.currency && item.currency !== "INR" ? `${(item.amount / 100).toFixed(2)} ${item.currency}` : money(item.amount)
-                  : item.status}
-              </strong>
-            </div>
-          ))}
-        </div>
-      )}
+      {dataRows.length > 0 && !preview?.batch_id && <ConversationPayments items={dataRows} onReview={id=>{stopVoice();setPreview({kind:'payment',payment_id:id,payment_source:'AI_WALLET',requires_confirmation:true});setState('ACTION_PREVIEW');}}/>}
       {(error || reply) && (
         <div className={`assistant-message ${error ? "error" : ""}`}>
           <span>{error ? "Issue" : "AI Wallet"}</span>

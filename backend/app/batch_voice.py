@@ -17,6 +17,10 @@ def matching(rows,phrase):
 def status_intent(db,text,state):
     from .voice import Intent
     value=text.lower().strip().rstrip('.!?')
+    if value in {'what payments need my attention','what payments are waiting for me','did i forget any checkout','what needs paying'}:return Intent('get_payment_attention',{},provider='context-resolver')
+    if value in {'which ticket expires first','which checkout expires first','which checkout is about to expire'}:return Intent('get_next_checkout',{'ticket_only':value=='which ticket expires first'},provider='context-resolver')
+    followups={'is this merchant trusted','who requested this payment','did that payment succeed','has the merchant confirmed my order'}
+    if value in followups:return Intent('get_payment_details',{'payment_id':state.selected_payment_id},provider='context-resolver') if state.selected_payment_id else Intent('',{},'Choose the exact request first. No payment was submitted.',provider='context-resolver')
     if not (value.startswith('did ') and 'payment' in value or value.startswith('what happened to ') or value in {'who sent this request','is this merchant recognized'}):return None
     selected=state.selected_payment_id
     if value in {'what happened to my order','who sent this request','is this merchant recognized'}:
@@ -41,11 +45,16 @@ def resolve(db,args,listed=()):
     return (chosen,None) if chosen else (None,'No requests remain selected. Which payments should I review?')
 
 def interpret(text,context):
-    value=text.lower().strip().rstrip('.!?')
+    value=text.lower().replace('’',"'").strip().rstrip('.!?')
     previous=context.get('batch_id')
     if previous and 'paypal' in value:return {'unsupported_source':True}
     if previous and value in {'how much will i have left if i pay these','how much will i have left','use my wallet','use wallet','use wallet instead','use my wallet instead'}:return {'existing':previous}
-    if previous and value in {'how much will remain','how much will remain?'}:return {'existing':previous}
+    if previous and value in {'how much will remain','how much will remain after these','how much will remain after these payments'}:return {'existing':previous}
+    if previous and value.startswith('not '):return {'existing':previous,'remove':value[4:]}
+    if previous and re.match(r'^(?:actually[, ]+)?(?:just|only) ',value):return {'existing':previous,'keep':re.sub(r'^(?:actually[, ]+)?(?:just|only) ','',value)}
+    if previous and re.match(r'^(?:add|include|re-add) ',value):return {'existing':previous,'add':re.sub(r'^(?:add|include|re-add) ','',value)}
+    ordinal=re.fullmatch(r'remove (?:the )?(first|second|third|fourth|fifth) payment',value)
+    if previous and ordinal:return {'existing':previous,'remove_position':['first','second','third','fourth','fifth'].index(ordinal[1])}
     if previous and value.startswith("don't pay "):return {'existing':previous,'remove':value[10:]}
     if previous and value.startswith('remove '):return {'existing':previous,'remove':value[7:]}
     if not re.match(r'^(?:please )?pay\b',value) or ' and ' not in value:return None
@@ -66,7 +75,20 @@ def prepare(db,args,context):
         old=get_batch(db,args['existing'],True)
         if not old or old.user_id!='demo-user':return {'response':'The previous review is unavailable. Choose your requests again.'}
         ids=[x['id'] for x in old.snapshot['items']]
-        if args.get('remove'):
+        if any(args.get(key) is not None for key in ('keep','add','remove','remove_position')) and old.status!='REVIEW':return {'response':'That review was already submitted or closed. Prepare a fresh selection; earlier approval cannot be reused.'}
+        if 'remove_position' in args:
+            index=args['remove_position']
+            if index>=len(ids):return {'response':'There is no payment at that position in your exact review.'}
+            ids.pop(index)
+        elif args.get('keep'):
+            found=matching([db.get(PaymentRequest,i) for i in ids],args['keep'])
+            if len(found)!=1:return {'response':'Which exact selected request should I keep?'}
+            ids=[found[0].id]
+        elif args.get('add'):
+            added,error=resolve(db,{'include':[args['add']]})
+            if error:return {'response':error}
+            ids=list(dict.fromkeys(ids+added))
+        elif args.get('remove'):
             if old.status!='REVIEW':return {'response':'That review was already submitted or closed. Check its recorded outcomes before making a new selection.'}
             rows=[db.get(PaymentRequest,i) for i in ids]
             matches=matching([p for p in rows if p],args['remove'])
@@ -83,7 +105,12 @@ def prepare(db,args,context):
 def retire(db,ident):
     if ident:
         old=get_batch(db,ident,True)
-        if old.status=='REVIEW':old.status='CANCELLED'
+        if old.status=='REVIEW':
+            old.status='CANCELLED'
+            if old.approval_id:
+                from .models import AuthorizationChallenge
+                approval=db.get(AuthorizationChallenge,old.approval_id)
+                if approval and approval.status=='APPROVED':approval.status='REVOKED';approval.approval_token=None
 
 def outcome(db,batch):
     result=view(db,batch)

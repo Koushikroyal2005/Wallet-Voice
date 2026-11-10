@@ -49,7 +49,9 @@ def test_concurrent_ingestion_is_one_immutable_order(factory):
     assert len(set(ids))==1
     with factory() as db:assert db.scalar(select(func.count()).select_from(MerchantOrder))==1
 
-def test_concurrent_automatic_mandate_reservations_and_duplicate(factory):
+def test_concurrent_automatic_mandate_reservations_and_duplicate(factory,monkeypatch):
+    from app.core import settings
+    monkeypatch.setattr(settings(),'demo_merchant_name','Demo Railway') # Legacy path only, no V2 identity.
     from app.models import SpendingMandate,PaymentRequest
     from app.authorization import create_challenge,verify_challenge,consume_approval
     from app.services import reserve,FinancialError

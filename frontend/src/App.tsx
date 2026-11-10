@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { WalletCompanion } from "./components/WalletCompanion";
 import { api, post, operationKey, finishOperation } from "./lib/api";
-import { money } from "./lib/formatting";
+import { money, paymentStatus } from "./lib/formatting";
 import { Dialog } from "./components/Dialog";
 import { FloatingAssistant } from "./components/FloatingAssistant";
 import { WalletPinDialog } from "./components/WalletPinDialog";
@@ -174,6 +174,8 @@ export function App() {
 
 function WalletApp() {
   const query = useQueryClient();
+  const recentActivity=useQuery({queryKey:['transactions'],queryFn:()=>api<any[]>('/api/wallet/transactions')});
+  const recentRecords=Array.isArray(recentActivity.data)?recentActivity.data.filter(item=>item.status==='SUCCEEDED'):[];
   const [tab, setTab] = useState<Tab>("home");
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [tab]);
   const [assistant, setAssistant] = useState(false);
@@ -260,16 +262,9 @@ function WalletApp() {
               {p.explicit_hold ? "On hold · waiting for you" : due(p)}
             </span>
             <small className={`payment-status status-${p.status.toLowerCase()}`}>
-              {p.status === "SUCCEEDED"
-                ? "Paid"
-                : p.status === "PROCESSING"
-                  ? "Processing"
-                  : p.status === "FAILED"
-                    ? "Payment failed"
-                    : p.verified
-                      ? "Known merchant"
-                      : "Check recipient before paying"}
+              {paymentStatus(p.status)}
             </small>
+            <small>{p.verified ? 'Recognized in this app' : 'Check recipient independently'}</small>
           </div>
           <strong className="payment-amount">{money(p.amount)}</strong>
           <button
@@ -396,7 +391,7 @@ function WalletApp() {
             <h1>
               {
                 {
-                  home: "Money moves. On your terms.",
+                  home: "Talk to your wallet.",
                   payments: "Payments, without the noise.",
                   wallet: "A clear view of your money.",
                   permissions: "You’re always in control.",
@@ -407,7 +402,7 @@ function WalletApp() {
             <p>
               {
                 {
-                  home: "Save merchant checkouts. Review them by voice. Approve securely.",
+                  home: "A quiet place for the payments you haven't finished.",
                   payments:
                     "Review what’s due, save a draft, or leave it for later.",
                   wallet:
@@ -455,62 +450,21 @@ function WalletApp() {
                     <Sparkles size={13} /> YOUR PERSONAL PAYMENT ASSISTANT
                   </span>
                   <h2>
-                    Your next payment.<br/>A little more clarity.
+                    It remembers what<br/>needs paying.
                   </h2>
-                  <p>Tell your wallet what you need. Get the details, understand the checks, and approve when you’re ready.</p>
+                  <p>Leave checkout. Pick it up here. Tell your wallet which payments to review, then approve the exact amounts.</p>
                   <div className="hero-companion" aria-hidden="true"><WalletCompanion/><span>Here to help you decide.</span></div>
                 </div>
                 <div className="hero-actions">
                   <button onClick={() => window.dispatchEvent(new CustomEvent("wallet-assistant-open", {detail: "voice"}))}><Mic size={20}/>Talk to your wallet</button>
                   <button className="secondary" onClick={() => setAssistant(true)}><MessageCircle size={20}/>Type instead</button>
+                  <button className="text-button home-available" onClick={()=>setTab('wallet')}><Wallet size={16}/> {balance.data ? `${money(balance.data.available_balance)} available` : balance.isPending ? 'Loading balance…' : 'Balance unavailable'} <small>Simulated wallet</small></button>
                   <p><ShieldCheck size={15}/> Your voice prepares. You approve the payment.</p>
                 </div>
+                <div id="voice-home-session" className="voice-home-session"/>
                 <div className="hero-urgent"><span className="round-icon"><Clock3 size={20}/></span><div><strong>{attention.filter(p => p.trace?.urgency === 'URGENT').length} urgent {attention.filter(p => p.trace?.urgency === 'URGENT').length === 1 ? 'request' : 'requests'}</strong><p>{attention.some(p => p.trace?.urgency === 'URGENT') ? 'A deadline is approaching. Take a look before you decide.' : 'No urgent requests right now. Review the rest at your pace.'}</p></div><button className="text-button" onClick={() => setTab('payments')}>View inbox <ArrowUpRight size={16}/></button></div>
               </section>
               <aside className="overview-column">
-                <section className="balance-card">
-                  <span className="balance-label">
-                    <Wallet size={18} /> Available to spend
-                  </span>
-                  <h2>
-                    {balance.isPending
-                      ? "—"
-                      : balance.data
-                        ? money(balance.data.available_balance)
-                        : "Unavailable"}
-                  </h2>
-                  <span className="balance-currency">
-                    INR · simulated wallet balance
-                  </span>
-                  <div className="balance-breakdown">
-                    <div>
-                      <span>Total balance</span>
-                      <strong>
-                        {balance.data
-                          ? money(balance.data.posted_balance)
-                          : "—"}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>Reserved for payments</span>
-                      <strong>
-                        {balance.data
-                          ? money(balance.data.reserved_amount)
-                          : "—"}
-                      </strong>
-                    </div>
-                  </div>
-                  <div className="balance-actions">
-                    <button onClick={() => setTab("wallet")}>
-                      <Plus size={17} />
-                      Add demo money
-                    </button>
-                    <button className="glass" onClick={() => setTab("wallet")}>
-                      <ArrowUpRight size={17} />
-                      Withdraw demo money
-                    </button>
-                  </div>
-                </section>
                 <section className="insight-card">
                   <span className="round-icon">
                     <Clock3 size={20} />
@@ -559,6 +513,7 @@ function WalletApp() {
                 )}
               </div>
             </section>
+            {!!recentRecords.length && <section className="surface recent-home-activity" aria-label="Recent wallet activity"><h2>Recently recorded</h2>{recentRecords.slice(0,2).map(item=><p key={item.id}><span>{item.kind==='PAYMENT'?'Wallet payment':item.kind==='TOPUP'?'Simulated money added':'Simulated withdrawal'}</span><strong>{money(item.amount)}</strong></p>)}<button className="text-button" onClick={()=>setTab('wallet')}>View receipts and activity</button></section>}
             <div className="home-footnote">
               <ShieldCheck size={16} />
               You choose the rules. Your assistant helps you follow them.
@@ -635,7 +590,7 @@ function WalletApp() {
         {tab === "merchant" && <MerchantDemo onChanged={refresh} />}
         {(tab === 'home' || tab === 'payments') && <AttentionQueue onReview={id => { const payment = items.find(p => p.id === id); if (payment) reviewPayment(payment); }}/ >}
       </main>
-      <FloatingAssistant requested={assistant} onClose={() => setAssistant(false)} onConfirmed={refresh} />
+      <FloatingAssistant inlineTarget={tab === 'home' ? 'voice-home-session' : undefined} requested={assistant} onClose={() => setAssistant(false)} onConfirmed={refresh} />
       {review && (
         <Dialog
           title={review.merchant}

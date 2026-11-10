@@ -1,4 +1,10 @@
-# Wallet-Voice V2 — merchant-to-wallet demo
+# Wallet-Voice V3 — focused demonstration
+
+Save one railway and one food request from the two authenticated local merchant pages. Leave those pages. Turn alerts off in Wallet-Voice and reload: both saved requests remain. On Home, tap Talk and ask what needs attention, then “Pay the railway and food orders.” Say “Actually, just the railway,” then “Add the food order.” Review exact identities, amounts, deadlines, simulated funding and projected balance; enter the PIN only in secure review. Show separate journal receipts, then merchant polling: payment confirmed, fulfillment still pending. Confirm simulated fulfillment separately on each merchant page.
+
+For failure handling, show an expired request and an insufficient-balance review. Funding requires its own PIN and a fresh payment review. Processing remains unresolved until the backend records a result. Keep live NVIDIA, OS push and PayPal buyer tests separate from browser fixtures. Full commands and manual checklist: `docs/V3_IMPLEMENTATION.md`.
+
+## Previous V2 demo
 
 1. Rebuild normally, then provision the two merchants once using `docker compose exec api python -m app.provision_merchants`. Store each returned secret only on its corresponding local merchant server; see `docs/MERCHANT_API.md`.
 2. Open the railway and food example pages on ports 8091 and 8092. Save both requests, note their deadlines, then leave the pages.

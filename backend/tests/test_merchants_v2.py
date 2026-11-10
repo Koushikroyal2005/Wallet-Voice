@@ -59,7 +59,9 @@ def test_replay_conflict_expiry_and_durable_session(client,factory):
     with factory() as fresh:
         order=fresh.scalar(select(MerchantOrder));assert order.payment_request_id==first['payment_request_id']
 
-def test_global_autopay_needs_pin_mandate_and_rechecks_revocation(factory):
+def test_global_autopay_needs_pin_mandate_and_rechecks_revocation(factory,monkeypatch):
+    from app.core import settings
+    monkeypatch.setattr(settings(),'demo_merchant_name','Demo Railway') # Explicit legacy-only fixture.
     with factory() as db:
         p=PaymentRequest(merchant='Demo Railway',category='travel',description='Ticket',amount=10000,verified=True,provider='MERCHANT:rail',expires_at=datetime.now(timezone.utc)+timedelta(minutes=10));db.add(p);db.flush()
         with pytest.raises(FinancialError,match='MANDATE_REQUIRED'):reserve(db,p,'auto-unauthorized','auto')
@@ -153,7 +155,9 @@ def test_worker_releases_legacy_automatic_reservation_without_authority(factory)
         assert balances(db,wallet(db))['posted_balance']==1_000_000
         assert balances(db,wallet(db))['reserved_amount']==0
 
-def test_worker_executes_pin_authorized_mandate_once(factory):
+def test_worker_executes_pin_authorized_mandate_once(factory,monkeypatch):
+    from app.core import settings
+    monkeypatch.setattr(settings(),'demo_merchant_name','Demo Railway') # Explicit legacy-only fixture.
     from app.maintenance import tick
     expiry=datetime.now(timezone.utc)+timedelta(days=1)
     details={'merchant':'Demo Railway','daily_limit':20000,'expires_at':int(expiry.timestamp())}

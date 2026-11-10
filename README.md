@@ -1,4 +1,6 @@
-# Wallet-Voice Guardian — V2
+# Wallet-Voice Guardian — V3
+
+Talk to your wallet. It remembers what needs paying. V3 brings the conversation onto Home, keeps unfinished checkouts visible when alerts are off, supports spoken corrections, and binds new automatic-payment permissions to authenticated merchant IDs. Exact PIN reviews, simulated ledger receipts and separate merchant fulfillment remain authoritative. See [V3 implementation, measured verification and limits](docs/V3_IMPLEMENTATION.md).
 
 V2 adds authenticated local merchant checkouts: save railway and food requests, review both by voice, approve exact simulated-wallet amounts with one PIN, and let each merchant poll settlement before separately recording fulfillment. See [merchant API and two local examples](docs/MERCHANT_API.md) and [V2 checklist](docs/V2_IMPLEMENTATION.md). These are simulated merchants; no real railway booking, food delivery, bank or UPI integration is claimed.
 

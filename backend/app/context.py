@@ -64,7 +64,7 @@ def _resolve_context(text, conversation):
     if value in {'use wallet instead','use my wallet','wallet instead'}:
         if not conversation.selected_payment_id:return Intent('',{},'Which payment would you like to use your wallet for?')
         return Intent('prepare_manual_payment',{'payment_id':conversation.selected_payment_id,'payment_source':'AI_WALLET'})
-    if value in {'cancel','cancel it','cancel that one',"don't pay",'do not pay','never mind','nevermind','forget it'}:
+    if value in {'cancel','cancel it','cancel that one','cancel this review','cancel the review',"don't pay",'do not pay','never mind','nevermind','forget it'}:
         conversation.selected_payment_id=None
         conversation.context={}
         return Intent('',{},'Cancelled this preview. This command did not submit a payment. Check Payments for any earlier submitted action.')

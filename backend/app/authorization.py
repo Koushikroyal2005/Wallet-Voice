@@ -30,10 +30,14 @@ def verify_challenge(db:Session,challenge_id:str,pin:str)->str:
     if not row or row.status!="PENDING" or _utc(row.expires_at)<=now:raise AuthorizationError("Authorization challenge expired or unavailable")
     if security.locked_until and _utc(security.locked_until)>now:raise AuthorizationError("Wallet PIN is temporarily locked")
     if not (len(pin)==6 and pin.isdigit() and hmac.compare_digest(_digest(pin,security.pin_salt),security.pin_hash)):
+        from .services import emit
+        emit(db,'authorization.rejected',{'authorization_id':row.id,'action':row.action})
         security.failed_attempts+=1
         if security.failed_attempts>=settings().pin_max_attempts:security.failed_attempts=0;security.locked_until=now+timedelta(minutes=settings().pin_lockout_minutes)
         raise AuthorizationError("Invalid wallet PIN")
-    security.failed_attempts=0;security.locked_until=None;row.status="APPROVED";row.approval_token=secrets.token_urlsafe(32);return row.approval_token
+    security.failed_attempts=0;security.locked_until=None;row.status="APPROVED";row.approval_token=secrets.token_urlsafe(32)
+    from .services import emit
+    emit(db,'authorization.accepted',{'authorization_id':row.id,'action':row.action});return row.approval_token
 def consume_approval(db:Session,token:str,action:str,amount:int,resource_id:str|None=None,details:dict|None=None)->AuthorizationChallenge:
     db.scalar(select(WalletSecurity).where(WalletSecurity.user_id=="demo-user").with_for_update())
     row=db.scalar(select(AuthorizationChallenge).where(AuthorizationChallenge.approval_token==token).with_for_update());now=datetime.now(timezone.utc)

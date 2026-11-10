@@ -10,7 +10,7 @@ from .authorization import create_challenge,verify_challenge,consume_approval,Au
 def request_snapshot(p):
     return {'id':p.id,'merchant':p.merchant,'amount':p.amount,'currency':p.currency,
             'deadline':utc(p.expires_at).isoformat() if p.expires_at else None,
-            'verified':p.verified,'provider':p.provider,'description':p.description}
+            'verified':p.verified,'provider':p.provider,'merchant_id':(p.trace or {}).get('merchant_id'),'description':p.description}
 
 def digest(snapshot):
     return hashlib.sha256(json.dumps(snapshot,sort_keys=True,separators=(',',':')).encode()).hexdigest()
@@ -28,6 +28,7 @@ def create_batch(db,ids,recognized=False,acknowledged_ids=None):
     db.add(batch);db.flush()
     for ident in ids:db.add(PaymentBatchItem(batch_id=batch.id,payment_request_id=ident))
     db.flush()
+    emit(db,'payment.batch.prepared',{'batch_id':batch.id})
     return batch
 
 def get_batch(db,ident,lock=False):

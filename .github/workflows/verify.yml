@@ -1,0 +1,46 @@
+name: Wallet-Voice verification
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    container: python:3.12
+    services:
+      test-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aiwallet_test
+          POSTGRES_PASSWORD: aiwallet_test
+          POSTGRES_DB: aiwallet_test
+        options: >-
+          --health-cmd "pg_isready -U aiwallet_test -d aiwallet_test"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql+psycopg://aiwallet_test:aiwallet_test@test-db:5432/aiwallet_test
+      TEST_DATABASE_URL: postgresql+psycopg://aiwallet_test:aiwallet_test@test-db:5432/aiwallet_test
+      NVIDIA_ENABLED: 'false'
+      PAYPAL_ENABLED: 'false'
+      REQUIRE_WALLET_LOGIN: 'false'
+      DEMO_WALLET_PIN: '123456'
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y ffmpeg
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        run: python -m compileall -q app scripts && alembic upgrade head && python -m pytest -q
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci && npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: node scripts/verify-product.mjs && node scripts/verify-guardian.mjs

@@ -123,14 +123,22 @@ def execute_tool(db:Session,intent:Intent):
     if 'amount' in intent.args and (type(intent.args['amount']) is not int or not 0<intent.args['amount']<=10_000_000):
         raise VoiceError('Please provide one positive INR amount within the supported range.')
     w=wallet(db);b=balances(db,w)
+    if intent.tool in {'get_payment_attention','get_next_checkout'}:
+        from .reminders import attention_data
+        items=[{**item,'id':item['payment_id'],'expires_at':item['deadline']} for item in attention_data(db)['items']]
+        if intent.tool=='get_next_checkout':
+            if intent.args.get('ticket_only'):
+                items=[i for i in items if 'ticket' in db.get(PaymentRequest,i['id']).description.lower() or db.get(PaymentRequest,i['id']).category=='travel']
+            items=sorted([i for i in items if i['deadline'] and i['stage']!='EXPIRED'],key=lambda i:i['deadline'])[:1]
+        return {'response':f"{len(items)} saved request(s) need attention. "+('; '.join(f"{i['merchant']}: {i['status'].lower()}, {i['amount']/100:.2f} {i['currency']}" for i in items)),'data':items}
     if intent.tool=='snooze_payment':
-        from .reminders import schedule,valid
+        from .reminders import schedule,valid,change_attention
         from .models import PaymentReminder
         from datetime import timedelta
         p=db.get(PaymentRequest,intent.args.get('payment_id'));now=datetime.now(timezone.utc)
         if not valid(p,now):return {'response':'This request is expired, held or already submitted; no reminder was changed.'}
         schedule(db,now)
-        for row in db.scalars(select(PaymentReminder).where(PaymentReminder.payment_request_id==p.id,PaymentReminder.status.in_(['PENDING','RETRY']))):row.next_attempt_at=min(now+timedelta(minutes=5),utc(p.expires_at)-timedelta(seconds=30))
+        change_attention(db,p.id,'SNOOZE',5)
         return {'response':'I postponed eligible background reminders by up to five minutes, staying before the deadline. The saved request remains in Attention. Notifications must be enabled; no payment was authorized.'}
     if intent.tool=="get_wallet_balance":return {"response":f"Your available demo balance is {b['available_balance']/100:.2f} {w.currency}. {b['reserved_amount']/100:.2f} {w.currency} is reserved.","data":{**b,'currency':w.currency}}
     if intent.tool=="get_wallet_transactions":

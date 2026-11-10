@@ -7,6 +7,7 @@ export function AttentionQueue({ onReview }: { onReview: (id: string) => void })
   const { data, refetch } = useQuery({ queryKey: ['attention'], queryFn: () => api('/api/notifications') });
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  async function attentionAction(id:string,action:'SNOOZE'|'DISMISS'|'RESTORE') {try{await post(`/api/notifications/attention/${id}`,{action,minutes:5});await refetch();setMessage(action==='SNOOZE'?'Reminder paused for up to five minutes. Payment deadline is unchanged.':action==='DISMISS'?'Hidden from attention. The request remains in Payments.':'Restored to attention.');}catch(e){setMessage((e as Error).message);}}
   async function enable() {
     setBusy(true);
     try {
@@ -26,11 +27,13 @@ export function AttentionQueue({ onReview }: { onReview: (id: string) => void })
   }
   return <section className="attention-queue surface" aria-label="Payment reminders">
     <div><span className="eyebrow">NEEDS YOUR ATTENTION</span><h2>Remembered for you</h2></div>
-    {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><small>{item.stage === 'EXPIRED' ? 'Expired checkout' : item.stage === 'URGENT' ? 'Expiring soon' : item.stage === 'SAVED_CHECKOUT' ? 'Saved merchant checkout · Simulated' : 'Upcoming payment'}</small><p>{money(item.amount)} · {item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'Saved for review'}</p></div><button className="secondary" onClick={() => onReview(item.payment_id)}>{item.stage === 'EXPIRED' ? 'View details' : 'Review now'}</button></article>) : <p>No deadline reminders right now. Payment requests stay saved when you leave.</p>}
+    {!data?.preferences?.enabled && <p>Alerts are off. Your saved payments are still here.</p>}
+    {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><small>{item.stage === 'EXPIRED' ? 'Expired checkout' : item.stage === 'URGENT' ? 'Expiring soon' : item.stage === 'DUE_SOON' ? 'Due soon' : item.stage === 'SAVED_CHECKOUT' ? 'Saved merchant checkout · Simulated' : 'Saved payment'}</small><p>{money(item.amount)} · {item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'Saved for review'}</p>{item.snoozed_until && <small>Reminder paused until {new Date(item.snoozed_until).toLocaleTimeString()}</small>}</div><div className="attention-actions"><button className="secondary" onClick={() => onReview(item.payment_id)}>{item.stage === 'EXPIRED' ? 'View details' : 'Review now'}</button>{item.stage!=='EXPIRED' && !item.explicit_hold && <button className="text-button" onClick={()=>void attentionAction(item.payment_id,'SNOOZE')}>Remind in 5 min</button>}<button className="text-button" onClick={()=>void attentionAction(item.payment_id,'DISMISS')}>Dismiss</button></div></article>) : <p>No saved payments need attention. Your payment history stays in Payments.</p>}
+    {!!data?.dismissed_items?.length && <details><summary>Hidden from attention ({data.dismissed_items.length})</summary>{data.dismissed_items.map((item:any)=><p key={item.payment_id}>{item.merchant} <button className="text-button" onClick={()=>void attentionAction(item.payment_id,'RESTORE')}>Restore</button></p>)}</details>}
     <details><summary>Reminder preferences</summary>
       <label><input type="checkbox" checked={data?.preferences?.enabled ?? true} onChange={async e => {
         try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, enabled: e.target.checked }) }); await refetch(); } catch (error) { setMessage((error as Error).message); }
-      }}/> In-app deadline reminders</label>
+      }}/> Deadline alerts (saved payments stay visible)</label>
       <p>Quiet hours: {data?.preferences?.quiet_start ?? 22}:00–{data?.preferences?.quiet_end ?? 8}:00, local wallet time.</p>
       {(['quiet_start','quiet_end'] as const).map(key => <label key={key}>{key === 'quiet_start' ? 'Quiet hours start' : 'Quiet hours end'}<select value={data?.preferences?.[key] ?? (key === 'quiet_start' ? 22 : 8)} onChange={async e => {
         try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, [key]: Number(e.target.value) }) }); await refetch(); } catch (error) { setMessage((error as Error).message); }

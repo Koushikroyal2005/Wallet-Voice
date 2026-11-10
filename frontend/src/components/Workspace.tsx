@@ -487,6 +487,7 @@ export function Drafts({ onChanged }: { onChanged: () => void }) {
 }
 
 export function Permissions({ onChanged }: { onChanged: () => void }) {
+  const merchants=useQuery({queryKey:['merchants'],queryFn:()=>api<{id:string;name:string}[]>('/api/merchants')});
   const [section, setSection] = useState<"autopay" | "security">("autopay");
   const mandates = useQuery({
     queryKey: ["mandates"],
@@ -499,6 +500,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
   const [create, setCreate] = useState(false);
   const [form, setForm] = useState({
     merchant: "Indian Railways",
+    merchant_id: '',
     max: "1500",
     daily: "3000",
     days: "30",
@@ -528,7 +530,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
         <button aria-pressed={section === "security"} onClick={() => setSection("security")}>Security</button>
       </div>
       {section === "autopay" && <>
-      <div className="permission-intro surface"><ShieldCheck size={24}/><div><strong>Your approval sets the boundaries.</strong><p>Business allowances cover specific checkouts. AutoPay uses your wallet rules. You can review or revoke an allowance below.</p></div><span className="badge">Demo wallet only</span></div>
+      <div className="permission-intro surface"><ShieldCheck size={24}/><div><strong>You choose who can be paid automatically.</strong><p>The general switch only enables existing permissions. Each authenticated merchant needs its own PIN-approved amount, daily limit and expiry. You can revoke permission at any time.</p></div><span className="badge">Simulated wallet only</span></div>
       <div className="section-heading">
         <div>
           <h2>Faster checkout</h2>
@@ -569,6 +571,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
                   </span>
                 </div>
                 <h3>{item.merchant}</h3>
+                <small>{item.merchant_id ? `Authenticated identity: ${item.merchant_id}` : 'Legacy demo permission · does not cover versioned merchants'}</small>
                 <p>
                   Up to <strong>{money(item.max_amount)}</strong> per payment
                 </p>
@@ -655,7 +658,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
               : "Loading spending rules…"}
           </p>
           <small>
-            Requests you put on hold always wait for you. Only recognised businesses qualify, and your spending limits still apply.
+            Requests you hold always wait for you. Recognition alone never permits automatic spending: an active PIN-approved permission for that exact merchant is required, within all spending limits.
           </small>
         </div>
         <button
@@ -685,10 +688,8 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
           <div className="form-stack">
             <label className="field">
               Which business can your wallet pay?
-              <input
-                value={form.merchant}
-                onChange={(e) => setForm({ ...form, merchant: e.target.value })}
-              />
+              <select value={form.merchant_id} onChange={e=>{const selected=merchants.data?.find(m=>m.id===e.target.value);setForm({...form,merchant_id:selected?.id||'',merchant:selected?.name||''});}}><option value="">Choose an authenticated demo merchant</option>{merchants.data?.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
+              {!merchants.data?.length && <small>No authenticated merchants available. Provision the demo merchant servers first.</small>}
             </label>
             {[
               ["max", "Most it can pay at once (₹)"],
@@ -710,7 +711,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
             </p>
             <button
               disabled={
-                !form.merchant.trim() ||
+                !form.merchant_id ||
                 !minorUnits(form.max) ||
                 minorUnits(form.daily) < minorUnits(form.max) ||
                 !Number.isInteger(Number(form.days)) ||
@@ -723,6 +724,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
                 );
                 setAuthorize({
                   merchant: form.merchant.trim(),
+                  merchant_id: form.merchant_id,
                   max_amount: minorUnits(form.max),
                   daily_limit: minorUnits(form.daily),
                   expires_at: expires.toISOString(),
@@ -740,9 +742,10 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
           title="Approve automatic checkout"
           action="MANDATE"
           amount={authorize.max_amount}
-          resourceId={authorize.merchant}
+          resourceId={authorize.merchant_id}
           details={{
             merchant: authorize.merchant,
+            merchant_id: authorize.merchant_id,
             daily_limit: authorize.daily_limit,
             expires_at: authorize.epoch,
           }}

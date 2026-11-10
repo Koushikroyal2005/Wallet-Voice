@@ -37,6 +37,7 @@ export function PaymentBatchReview({ batchId, onChanged, onCancel }: { batchId: 
         <div><strong>{item.merchant}</strong><b>{money(item.amount)}</b></div>
         <p>{item.deadline ? `Due ${new Date(item.deadline).toLocaleString()}` : 'No deadline'} · {item.currency}</p>
         <small>{item.verified ? item.provider?.startsWith('MERCHANT:') ? 'Authenticated demo merchant · Simulated checkout' : 'Marked verified in this app' : 'Unrecognized business — check independently'}</small>
+        {item.merchant_id && <small>Merchant identity: {item.merchant_id}</small>}
         {!item.verified && batch.status === 'REVIEW' && <button className="secondary" disabled={busy || item.acknowledged} onClick={async () => {
           setBusy(true);
           try { const next = await post(`/api/payment-batches/${reviewId}/acknowledge`, { payment_id: item.id }); token.current = undefined; setPin(''); setBatch(next); setReviewId(next.id); }
