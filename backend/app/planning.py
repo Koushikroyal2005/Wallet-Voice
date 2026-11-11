@@ -23,9 +23,14 @@ def activity(db=Depends(get_db)):
                      'status':data['status'],'created_at':utc(batch.created_at),'totals':totals,'source':'SIMULATED_WALLET','batch_id':batch.id,'reference':batch.id})
     for a,p in db.execute(select(PaymentAttempt,PaymentRequest).join(PaymentRequest,PaymentRequest.id==PaymentAttempt.payment_request_id).order_by(PaymentAttempt.created_at.desc()).limit(200)):
         if a.id in grouped:continue
+        from .documents import attempt_record
+        try:evidence=attempt_record(db,a.id)
+        except HTTPException as error:
+            if error.status_code==404:continue
+            raise
         rows.append({'id':a.id,'kind':'BILL' if p.category in {'bill','bills','subscription'} else 'SENT','title':p.merchant,'search_text':p.description,'status':a.status,
-                     'created_at':utc(a.created_at),'totals':{p.currency:p.amount},'source':'SIMULATED_WALLET' if a.reservation_id else 'PAYPAL_SANDBOX',
-                     'payment_id':p.id,'reference':a.provider_reference or a.id})
+                     'created_at':utc(a.created_at),'totals':{evidence['currency']:evidence['amount']},'source':'SIMULATED_WALLET' if evidence['funding_source']=='AI_WALLET' else evidence['funding_source'],
+                     'payment_id':p.id,'attempt_id':a.id,'download_url':f'/api/product/documents/attempts/{a.id}.pdf','reference':a.provider_reference or a.id})
     for op in db.scalars(select(Operation).where(Operation.kind!='PAYMENT').order_by(Operation.created_at.desc()).limit(100)):
         rows.append({'id':op.id,'kind':'RECEIVED' if op.kind=='TOPUP' else 'SENT','title':'Simulated money added' if op.kind=='TOPUP' else 'Simulated withdrawal',
                      'status':op.status,'created_at':utc(op.created_at),'totals':{'INR':op.amount},'source':'SIMULATED_WALLET','reference':op.reference,'search_text':op.kind})
@@ -111,7 +116,12 @@ def catalog(q:str='',kind:str='ALL',db=Depends(get_db)):
     if kind in {'ALL','PAYMENT','REFUND'}:
         for a,p in db.execute(select(PaymentAttempt,PaymentRequest).join(PaymentRequest,PaymentRequest.id==PaymentAttempt.payment_request_id).order_by(PaymentAttempt.created_at.desc()).limit(100)):
             if kind=='REFUND' and a.status!='REFUNDED':continue
-            rows.append({'id':a.id,'kind':'REFUND' if a.status=='REFUNDED' else 'PAYMENT','title':p.merchant+' · '+p.description,'amount':p.amount,'currency':p.currency,'status':a.status,'created_at':utc(a.created_at),'reference':a.provider_reference or a.id,'payment_id':p.id,'download_url':f'/api/product/documents/payments/{p.id}.pdf','trust':'RECORDED_ATTEMPT_NOT_NECESSARILY_SETTLED'})
+            from .documents import attempt_record
+            try:evidence=attempt_record(db,a.id)
+            except HTTPException as error:
+                if error.status_code==404:continue
+                raise
+            rows.append({**evidence,'id':a.id,'kind':'REFUND' if a.status=='REFUNDED' else 'PAYMENT','title':p.merchant+' · '+p.description,'created_at':utc(a.created_at),'reference':a.provider_reference or a.id,'download_url':f'/api/product/documents/attempts/{a.id}.pdf','trust':'RECORDED_ATTEMPT_NOT_NECESSARILY_SETTLED'})
     if kind in {'ALL','BATCH'}:
         for b in db.scalars(select(PaymentBatch).where(PaymentBatch.user_id=='demo-user').order_by(PaymentBatch.created_at.desc()).limit(100)):
             rows.append({'id':b.id,'kind':'BATCH','title':'Batch statement '+', '.join(i['merchant'] for i in b.snapshot['items']),'status':b.status,'created_at':utc(b.created_at),'reference':b.id,'download_url':f'/api/product/documents/batches/{b.id}.pdf','trust':'SIMULATED_WALLET'})

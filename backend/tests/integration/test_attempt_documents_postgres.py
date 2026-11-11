@@ -1,0 +1,8 @@
+"""Attempt evidence contract on isolated PostgreSQL only."""
+import os
+import pytest
+from test_merchants_v2_postgres import factory, configure, client
+from test_attempt_documents import test_failed_and_later_success_documents_are_distinct, test_failed_batch_receipt_cannot_inherit_later_retry_journal
+from test_attempt_documents import test_refund_record_preserves_original_capture, test_attention_read_state_survives_stage_change
+from test_attempt_documents import test_activity_does_not_invent_paypal_source_without_order
+pytestmark=pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'),reason='requires isolated PostgreSQL test database')

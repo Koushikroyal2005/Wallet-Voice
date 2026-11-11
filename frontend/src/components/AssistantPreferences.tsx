@@ -72,6 +72,11 @@ export function AssistantPreferences({
       >
         New chat
       </button>
+      <p>New chat starts fresh without deleting previous server history.</p>
+      <button className="text-button" disabled={a.busy || a.state === "RECORDING" || a.submitting}
+        onClick={() => { if (window.confirm("Delete the current conversation from this device and the server? Payment records are retained.")) void a.deleteConversation(); }}>
+        Delete current conversation
+      </button>
     </details>
   );
 }

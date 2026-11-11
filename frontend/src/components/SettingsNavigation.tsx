@@ -1,0 +1,12 @@
+import { ChevronRight, User, ShieldCheck, Bell, Mic, Palette, CircleHelp, LockKeyhole } from "lucide-react";
+const groups = [
+  { title: "Your account", rows: [{name:"Personal Details", hint:"About this demo account", Icon:User}] },
+  { title: "Payments & security", rows: [{name:"Security", hint:"Wallet PIN and secure approvals", Icon:LockKeyhole}, {name:"AutoPay & Permissions", hint:"Businesses, limits and expiry", Icon:ShieldCheck}] },
+  { title: "Preferences", rows: [{name:"Notifications", hint:"Alerts, quiet hours and privacy", Icon:Bell}, {name:"AI & Voice", hint:"Listening and spoken replies", Icon:Mic}, {name:"Appearance", hint:"Light, dark or device theme", Icon:Palette}] },
+  { title: "Privacy & support", rows: [{name:"Privacy & Data", hint:"Microphone, conversations and records", Icon:ShieldCheck}, {name:"Help & About", hint:"How this prototype works", Icon:CircleHelp}] },
+];
+export function SettingsNavigation({section,onSelect}:{section:string;onSelect:(section:string)=>void}) {
+  return <nav className={`settings-navigation ${section !== "Overview" ? "has-detail" : ""}`} aria-label="Settings sections">
+    {groups.map(group=><section key={group.title}><h2>{group.title}</h2><div className="settings-row-group">{group.rows.map(({name,hint,Icon})=><button key={name} aria-label={name} aria-current={section===name?"page":undefined} onClick={()=>onSelect(name)}><Icon size={20}/><span><strong>{name}</strong><small>{hint}</small></span><ChevronRight size={17}/></button>)}</div></section>)}
+  </nav>;
+}

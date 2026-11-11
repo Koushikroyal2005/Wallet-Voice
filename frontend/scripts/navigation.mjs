@@ -15,11 +15,9 @@ export async function navigate(page, name) {
   await page
     .getByRole("button", { name: "Open account and Settings", exact: true })
     .click();
-  if (name === "Auto-pay & security")
-    return page
-      .getByRole("button", { name: "Security & AutoPay", exact: true })
-      .click();
-  await page.getByRole("button", { name: "Overview", exact: true }).click();
+  const back = page.getByRole("button", { name: "Back to Settings", exact: true });
+  if (await back.isVisible()) await back.click();
+  if (name === "Auto-pay & security") return;
   return page
     .locator(".settings-list")
     .getByRole("button", { name, exact: true })

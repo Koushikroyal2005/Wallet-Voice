@@ -110,7 +110,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     {error && <p role="alert">{error}</p>}
     {uncertain && <p>The last response was interrupted. Any wallet retry uses the same payment key.</p>}
     {paypal && (locked || !expired && !held && allowed) && <PayPalCheckoutPanel paymentId={paymentId} amount={p.amount} onComplete={() => { void load().catch(e => setError(e.message)); onChanged(); }}/>}
-    {review.receipt&&<a className="document-link" href={`/api/product/documents/payments/${paymentId}.pdf`}>Download payment record PDF</a>}
+    {review.receipt&&<a className="document-link" href={`/api/product/documents/attempts/${review.receipt.attempt_id}.pdf`}>Download payment record PDF</a>}
     <div className="preview-actions">
       {!paypal && !done && <button disabled={!allowed || busy} onClick={() => void act()}>{busy ? 'Processing…' : 'Confirm action'}</button>}
       {!locked && !expired && !held && !done && ['PENDING', 'HELD'].includes(p.status) && <button className="secondary" disabled={busy} onClick={() => void act(true)}>Hold payment</button>}

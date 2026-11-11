@@ -26,7 +26,7 @@ def notification_feed(db):
                      'payment_id':payment_id,'batch_id':batch_id,'category':'security' if event.event_type=='security.pin.changed' else 'payment','destination':'settings' if event.event_type=='security.pin.changed' else 'activity'})
     for item in attention_data(db)['items']:
         if item['stage']=='EXPIRED':continue
-        rows.append({'id':f"attention:{item['payment_id']}:{item['stage']}",'title':item['merchant'],
+        rows.append({'id':f"attention:{item['payment_id']}",'title':item['merchant'],
                      'message':'Saved payment ready for review. '+item['stage'].replace('_',' ').lower(),
                      'section':'Needs Review','created_at':None,'payment_id':item['payment_id'],'batch_id':None})
         if item['stage']=='URGENT' and not item['explicit_hold']:
@@ -43,6 +43,10 @@ def notification_feed(db):
         if row['section']=='AI Updates' and not choices['ai_alerts']:continue
         if row.get('category')=='planning' and not choices['planning_alerts']:continue
         state=states.get(row['id'])
+        if not state and row['id'].startswith('attention:'):
+            # Preserve prior read/dismiss decisions from stage-qualified IDs.
+            legacy=[s for key,s in states.items() if key.startswith(row['id']+':')]
+            state=next((s for s in legacy if s.dismissed),next((s for s in legacy if s.read),None))
         if state and state.dismissed:continue
         result.append({**row,'read':bool(state and state.read)})
     return result

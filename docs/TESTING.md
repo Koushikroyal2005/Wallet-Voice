@@ -1,5 +1,9 @@
 # Testing
 
+## Final engineering audit — 12 November 2026
+
+See [FINAL_ENGINEERING_AUDIT.md](FINAL_ENGINEERING_AUDIT.md) for commands, changed files, screenshots and limitations. Latest local backend: **286 passed / 100 skipped** (99 PostgreSQL-only plus one missing optional Web Push dependency). Separate isolated PostgreSQL: **99 passed / zero skipped or failed**. TypeScript/Vite, product, consumer (six viewports), completion, premium assistant, Guardian and V3 browser journeys passed. Provider/audio fixtures are explicitly separated from actual isolated simulated-wallet journals. No live provider or remote GitHub CI result is claimed. No development data reset or application deployment.
+
 ## Master prompt completion pass
 
 Latest local full suite: **282 passed / 96 skipped**, 218.36 seconds. The skips are 95 isolated PostgreSQL cases and one optional Web Push adapter dependency missing in the local Windows interpreter; none are counted as local passes. See [MASTER_PROMPT_COVERAGE.md](MASTER_PROMPT_COVERAGE.md) for the separate PostgreSQL result, all 31 prompt sections, screenshots, exact supported trust boundaries and remaining conditional/partial scope. New `node scripts/verify-completion.mjs` verifies actual isolated intake/splits/uploads plus synthetic QR behavior; it does not use live providers or physical cameras.

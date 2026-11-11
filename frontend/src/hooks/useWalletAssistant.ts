@@ -316,14 +316,14 @@ export function useWalletAssistant({
     pendingTurn.current = undefined;
     inFlight.current = false;
     stopVoice();
-    if (conversationId)
-      await fetch(`/api/assistant/conversations/${conversationId}`, {
-        method: "DELETE",
-      }).catch(() => undefined);
     const id = crypto.randomUUID();
     localStorage.setItem("ai-wallet-conversation", id);
     setConversationId(id);
     setMessages([]);
+    setDataRows([]);
+    setResultData(undefined);
+    setPinRequired(false);
+    setRecognizedMerchant(false);
     setReply("");
     setPreview(undefined);
     setText("");
@@ -333,6 +333,23 @@ export function useWalletAssistant({
     setPlaybackProvider("");
     setError("");
     setState("IDLE");
+  };
+  const deleteConversation = async () => {
+    if (!conversationId || inFlight.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    stopVoice();
+    try {
+      const response = await fetch(`/api/assistant/conversations/${conversationId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(response.status === 401 ? "Session expired. Sign in before deleting this conversation." : "Conversation was not deleted. Please retry.");
+      await newConversation();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Conversation was not deleted.");
+      setState("ERROR");
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
   };
   const start = async () => {
     if (
@@ -679,6 +696,7 @@ export function useWalletAssistant({
     stop,
     stopVoice,
     newConversation,
+    deleteConversation,
     confirm,
     previewText,
     recognizedMerchant,

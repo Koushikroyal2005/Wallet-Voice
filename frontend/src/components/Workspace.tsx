@@ -489,9 +489,10 @@ export function Drafts({ onChanged,requested=false,requestedRecipient,onRequestH
   );
 }
 
-export function Permissions({ onChanged }: { onChanged: () => void }) {
+export function Permissions({ onChanged, focusedSection }: { onChanged: () => void; focusedSection?: "autopay" | "security" }) {
   const merchants=useQuery({queryKey:['merchants'],queryFn:()=>api<{id:string;name:string}[]>('/api/merchants')});
-  const [section, setSection] = useState<"autopay" | "security">("autopay");
+  const [selectedSection, setSection] = useState<"autopay" | "security">("autopay");
+  const section = focusedSection ?? selectedSection;
   const mandates = useQuery({
     queryKey: ["mandates"],
     queryFn: () => api<any[]>("/api/mandates"),
@@ -501,6 +502,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
     queryFn: () => api("/api/autopay/settings"),
   });
   const [create, setCreate] = useState(false);
+  const [permissionStep, setPermissionStep] = useState(0);
   const [form, setForm] = useState({
     merchant: "Indian Railways",
     merchant_id: '',
@@ -528,10 +530,10 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
   }
   return (
     <>
-      <div className="assistant-mode-switch" aria-label="Payment settings">
+      {!focusedSection && <div className="assistant-mode-switch" aria-label="Payment settings">
         <button aria-pressed={section === "autopay"} onClick={() => setSection("autopay")}>Auto-pay</button>
         <button aria-pressed={section === "security"} onClick={() => setSection("security")}>Security</button>
-      </div>
+      </div>}
       {section === "autopay" && <>
       <div className="permission-intro surface"><ShieldCheck size={24}/><div><strong>You choose who can be paid automatically.</strong><p>Only businesses you approve can be paid. Choose a limit and an end date, then confirm with your PIN. You can switch a permission off at any time.</p></div><span className="badge">Simulated wallet only</span></div>
       <div className="section-heading">
@@ -539,7 +541,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
           <h2>Faster checkout</h2>
           <p>Choose businesses your wallet can pay without asking each time, within limits you approve.</p>
         </div>
-        <button onClick={() => setCreate(true)}>
+        <button onClick={() => {setPermissionStep(0);setCreate(true);}}>
           <Plus size={16} />
           Choose a business
         </button>
@@ -689,16 +691,17 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
           onClose={() => setCreate(false)}
         >
           <div className="form-stack">
-            <label className="field">
+            <p role="status">Step {permissionStep + 1} of 4 · {['Choose a business','Set spending limits','Choose expiry','Review permission'][permissionStep]}</p>
+            {permissionStep === 0 && <label className="field">
               Which business can your wallet pay?
               <select value={form.merchant_id} onChange={e=>{const selected=merchants.data?.find(m=>m.id===e.target.value);setForm({...form,merchant_id:selected?.id||'',merchant:selected?.name||''});}}><option value="">Choose an authenticated demo merchant</option>{merchants.data?.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
               {!merchants.data?.length && <small>No authenticated merchants available. Provision the demo merchant servers first.</small>}
-            </label>
+            </label>}
             {[
               ["max", "Most it can pay at once (₹)"],
               ["daily", "Most it can pay in one day (₹)"],
               ["days", "Stop this permission after how many days?"],
-            ].map(([key, label]) => (
+            ].filter(([key]) => permissionStep === (key === 'days' ? 2 : 1)).map(([key, label]) => (
               <label className="field" key={key}>
                 {label}
                 <input
@@ -708,11 +711,14 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
                 />
               </label>
             ))}
+            {permissionStep === 3 && <dl className="guardian-details"><div><dt>Business</dt><dd>{form.merchant}</dd></div><div><dt>Per payment</dt><dd>{money(minorUnits(form.max))}</dd></div><div><dt>Per day</dt><dd>{money(minorUnits(form.daily))}</dd></div><div><dt>Expires after</dt><dd>{form.days} days</dd></div></dl>}
             <p>
               Payments within these limits may complete from the merchant page
               without another prompt.
             </p>
-            <button
+            {permissionStep > 0 && <button className="secondary" onClick={()=>setPermissionStep(permissionStep-1)}>Back</button>}
+            {permissionStep < 3 && <button disabled={permissionStep===0 ? !form.merchant_id : permissionStep===1 ? !minorUnits(form.max)||minorUnits(form.daily)<minorUnits(form.max) : !Number.isInteger(Number(form.days))||Number(form.days)<1||Number(form.days)>365} onClick={()=>setPermissionStep(permissionStep+1)}>Continue</button>}
+            {permissionStep === 3 && <button
               disabled={
                 !form.merchant_id ||
                 !minorUnits(form.max) ||
@@ -736,7 +742,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
               }}
             >
               Review checkout approval
-            </button>
+            </button>}
           </div>
         </Dialog>
       )}
@@ -780,7 +786,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
         <Dialog
           title="Change your wallet PIN"
           busy={busy}
-          onClose={() => setChangePin(false)}
+          onClose={() => {setChangePin(false);setPin({current:"",next:"",confirm:""});setError("");}}
         >
           <div className="form-stack">
             {[

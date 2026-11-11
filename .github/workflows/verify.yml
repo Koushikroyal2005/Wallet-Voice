@@ -50,3 +50,18 @@ jobs:
       - run: pip install -r backend/requirements.txt
       - working-directory: frontend
         run: node scripts/verify-v3.mjs
+      - working-directory: frontend
+        run: node scripts/verify-consumer.mjs
+      - working-directory: frontend
+        run: node scripts/verify-completion.mjs
+      - working-directory: frontend
+        run: node scripts/verify-premium.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wallet-voice-demo-browser-screenshots
+          path: |
+            artifacts/consumer-product/
+            artifacts/prompt-completion/
+            artifacts/premium-assistant/
+          retention-days: 7

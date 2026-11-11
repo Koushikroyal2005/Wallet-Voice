@@ -124,7 +124,7 @@ export function FloatingAssistant({
           <section
             ref={surface}
             tabIndex={-1}
-            className={`assistant-surface ${assistant.preview ? "has-action" : ""}`}
+            className={`assistant-surface ${assistant.preview ? "has-action" : ""} ${mode === "voice" && !assistant.preview && !assistant.error && !assistant.text && assistant.state !== "TRANSCRIPT_READY" && assistant.dataRows.length <= 3 ? "is-compact" : ""}`}
             aria-label="Wallet conversation"
           >
             <header className="assistant-surface-header">

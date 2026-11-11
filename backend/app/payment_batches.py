@@ -67,7 +67,9 @@ def view(db,batch):
         item=db.scalar(select(PaymentBatchItem).where(PaymentBatchItem.batch_id==batch.id,PaymentBatchItem.payment_request_id==saved['id']))
         a=db.get(PaymentAttempt,item.attempt_id) if item and item.attempt_id else None
         op=db.scalar(select(Operation).where(Operation.idempotency_key==f"payment:{saved['id']}"))
-        j=db.scalar(select(JournalTransaction).where(JournalTransaction.operation_id==op.id)) if op else None
+        from .models import PaymentReservation
+        reservation=db.get(PaymentReservation,a.reservation_id) if a and a.reservation_id else None
+        j=db.scalar(select(JournalTransaction).where(JournalTransaction.operation_id==op.id)) if op and a and a.status=='SUCCEEDED' and reservation and reservation.status=='CONSUMED' else None
         items.append({**saved,'current_identity':current['identity_state'] if current else 'MISSING','current_verified':current['verified'] if current else False,'acknowledged':acknowledged,'blocked':bool(codes),'reason_codes':codes,'status':a.status if a else p.status if p else 'UNAVAILABLE',
                       'attempt_id':a.id if a else None,'failure_reason':a.failure_reason if a else None,
                       'receipt':{'journal_id':j.id,'operation_id':op.id,'timestamp':utc(j.created_at).isoformat(),'status':a.status,'provider_reference':a.provider_reference} if j and a else None})

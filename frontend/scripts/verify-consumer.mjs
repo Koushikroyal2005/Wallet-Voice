@@ -85,6 +85,8 @@ try {
     );
   }
   async function shot(name) {
+    if (name.startsWith("activity-") || name === "dark-activity")
+      await page.getByRole("heading", { name: "Your Activity", exact: true }).locator("..").locator(".record-row").first().waitFor();
     await page.screenshot({
       path: join(output, name + ".png"),
       animations: "disabled",
@@ -133,6 +135,12 @@ try {
       4,
     );
     await page.getByRole("button", { name: /^Notifications/ }).click();
+    assert.equal(await page.getByRole("dialog").evaluate(el=>el.matches(":modal")), width <= 768, "Desktop notifications are nonmodal; mobile is a sheet");
+    if (width > 768) {
+      await page.getByRole("button", { name: /^Notifications/ }).click();
+      await page.getByRole("dialog").waitFor({state:"detached"});
+      await page.getByRole("button", { name: /^Notifications/ }).click();
+    }
     await page.getByRole("button", { name: "AI Updates", exact: true }).click();
     await shot(`notifications-${width}`);
     await page.keyboard.press("Escape");
@@ -336,10 +344,14 @@ try {
   await page.getByText('Your wallet.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Open account and Settings',exact:true}).click();
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
-  await page.getByLabel("Theme", { exact: true }).selectOption("dark");
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
   await shot("dark-settings");
   await page.reload();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+  for (const screen of ["Home", "Pay", "Inbox", "Activity", "Accounts & Cards"]) {
+    await navigate(page, screen);
+    await shot(`dark-${screen.toLowerCase().replaceAll(" ","-")}`);
+  }
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(

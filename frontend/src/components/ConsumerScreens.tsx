@@ -20,6 +20,7 @@ import { DocumentCenter } from "./DocumentCenter";
 import { SplitHistory } from "./SplitMoney";
 import { NotificationCategories, RenewalControls } from "./PlanningControls";
 import {ActivityTimeline} from './ActivityTimeline';
+import {SettingsNavigation} from './SettingsNavigation';
 
 export type Destination =
   | "home"
@@ -474,7 +475,9 @@ export function ActivityScreen({
   return (
     <div className="consumer-stack">
       <ActivityTimeline onBatch={onBatch} onPayment={onPayment}/>
-      <details><summary>Documents & shared bill requests</summary><DocumentCenter/><SplitHistory/></details>
+      <button className="secondary" onClick={()=>setFilter("Documents")}>Documents & Receipts</button>
+      {filter === "Documents" && <><DocumentCenter/><button className="text-button" onClick={()=>setFilter("All")}>Close documents</button></>}
+      <details><summary>Shared bill requests</summary><SplitHistory/></details>
       <details className="activity-archive"><summary>Detailed histories & money requests</summary>
       <div className="toolbar">
         <input
@@ -870,35 +873,15 @@ export function SettingsScreen({
     () => localStorage.getItem("wallet-theme") || "light",
   );
   return (
-    <div className="consumer-stack">
-      <div
-        className="settings-sections"
-        role="group"
-        aria-label="Settings sections"
-      >
-        {[
-          "Overview",
-          "Security & AutoPay",
-          "Notifications",
-          "AI & Voice",
-          "Appearance",
-          "Privacy & Help",
-        ].map((s) => (
-          <button
-            className={section === s ? "active secondary" : "secondary"}
-            aria-pressed={section === s}
-            key={s}
-            onClick={() => setSection(s)}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+    <div className="consumer-stack settings-layout">
+      {section !== "Overview" && <button className="secondary settings-back" onClick={() => setSection("Overview")}>Back to Settings</button>}
+      <SettingsNavigation section={section} onSelect={setSection}/>
+      <div className="consumer-stack settings-detail">
       {section === "Overview" && (
         <>
           <section className="surface consumer-card">
             <span className="eyebrow">YOUR ACCOUNT</span>
-            <h2>Your demo wallet</h2>
+            <h2>Your wallet, your choices</h2>
             <p>
               Single-owner prototype · Simulated funds · PayPal Sandbox separate
             </p>
@@ -925,9 +908,11 @@ export function SettingsScreen({
           </button>
         </>
       )}
-      {section === "Security & AutoPay" && (
-        <Permissions onChanged={onChanged} />
+      {section === "Personal Details" && <section className="surface consumer-card"><h2>Your account</h2><p>This is a single-owner demo. Personal profile editing and real bank linking are not available.</p></section>}
+      {section === "Security" && (
+        <Permissions focusedSection="security" onChanged={onChanged} />
       )}
+      {section === "AutoPay & Permissions" && <Permissions focusedSection="autopay" onChanged={onChanged}/>}
       {section === "Notifications" && (
         <>
           <NotificationCategories />
@@ -942,31 +927,20 @@ export function SettingsScreen({
       {section === "Appearance" && (
         <section className="surface consumer-card">
           <h2>Appearance</h2>
-          <label className="field">
-            Theme
-            <select
-              aria-label="Theme"
-              value={theme}
-              onChange={(e) => {
-                setTheme(e.target.value);
-                localStorage.setItem("wallet-theme", e.target.value);
-                document.documentElement.dataset.theme = e.target.value;
-              }}
-            >
+          <div className="assistant-mode-switch" role="group" aria-label="Theme">
               {["light", "dark", "system"].map((t) => (
-                <option key={t} value={t}>
+                <button key={t} aria-pressed={theme===t} onClick={()=>{setTheme(t);localStorage.setItem("wallet-theme",t);document.documentElement.dataset.theme=t;}}>
                   {t[0].toUpperCase() + t.slice(1)}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
+          </div>
           <p>
             Reduced motion follows your device settings. Interface language:
             English.
           </p>
         </section>
       )}
-      {section === "Privacy & Help" && (
+      {section === "Privacy & Data" && (
         <section className="surface consumer-card">
           <h2>Stay in control.</h2>
           <p>
@@ -975,8 +949,7 @@ export function SettingsScreen({
           </p>
           <p>
             This single-owner demo is not a bank account. Bank/card connections,
-            tax invoices, account deletion and server conversation deletion are
-            not implemented. Starting a new chat does not erase server history.
+            tax invoices and account deletion are not implemented. Starting a new chat does not erase server history. To delete the current conversation, use the explicit Delete action in assistant details and wait for the server response. Payment records are retained.
           </p>
           <p>
             Manage microphone and notification permission in your browser's site
@@ -984,6 +957,8 @@ export function SettingsScreen({
           </p>
         </section>
       )}
+      {section === "Help & About" && <section className="surface consumer-card"><h2>Wallet-Voice Guardian</h2><p>Review payments by voice or manually. Simulated wallet funds and PayPal Sandbox are separate. Never share your PIN or OTP with the assistant.</p><p>Microphone and notification permissions are controlled by your browser. This prototype does not move real bank funds.</p></section>}
+      </div>
     </div>
   );
 }

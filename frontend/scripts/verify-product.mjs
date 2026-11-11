@@ -89,7 +89,8 @@ try {
       if(name==='Auto-pay & security'){
         await page.getByRole('button',{name:'Security',exact:true}).click();
         await page.getByRole('button',{name:'Change PIN',exact:true}).waitFor();await screen(`security-${width}`);
-        await page.getByRole('button',{name:'Auto-pay',exact:true}).click();
+        await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
+        await page.getByRole('button',{name:/^AutoPay & Permissions/}).click();
       }
     }
     await navigate(page,'Home');
@@ -139,9 +140,11 @@ try {
   await page.getByRole('button',{name:'Security',exact:true}).click();
   await page.getByRole('button',{name:'Change PIN',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Choose a business',exact:true}).count(),0);
-  await page.getByRole('button',{name:'Auto-pay',exact:true}).click();
+  await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
+  await page.getByRole('button',{name:'AutoPay & Permissions',exact:true}).click();
   await page.getByRole('button',{name:'Choose a business'}).click();
   await page.getByRole('dialog').getByRole('combobox').selectOption('fixture-rail');
+  for (let step=0;step<3;step++) await page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
   await page.getByRole('button',{name:'Review checkout approval'}).click();
   await page.getByRole('dialog').getByText('Indian Railways',{exact:true}).waitFor();
   await page.getByRole('dialog').getByText('Maximum in one day',{exact:true}).waitFor();

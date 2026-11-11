@@ -199,7 +199,7 @@ function WalletApp() {
     return()=>{window.removeEventListener('wallet-intake-open',intake);window.removeEventListener('wallet-split-open',split);window.removeEventListener('wallet-send-recipient',recipient);window.removeEventListener('wallet-navigate',navigate);};
   },[]);
   const notifications=useNotifications();
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [tab]);
+  useEffect(() => { setNotificationsOpen(false); window.scrollTo({ top: 0, behavior: 'instant' }); }, [tab]);
   const [assistant, setAssistant] = useState(false);
   const [sendRequested,setSendRequested] = useState(false);
   const [filter, setFilter] = useState("Pending");
@@ -394,7 +394,7 @@ function WalletApp() {
               ? "Merchant demo"
               : [...tabs,...secondaryTabs].find((t) => t.id === tab)?.label}
           </span>
-          <div className="topbar-actions"><button className="icon-button notification-bell" aria-label={`Notifications${notifications.data?.unread?`, ${notifications.data.unread} unread`:''}`} onClick={()=>setNotificationsOpen(true)}><Bell size={21}/>{!!notifications.data?.unread&&<b>{notifications.data.unread>99?'99+':notifications.data.unread}</b>}</button><button className="icon-button profile-button" aria-label="Open account and Settings" onClick={()=>setTab('settings')}><UserRound size={21}/></button></div>
+          <div className="topbar-actions"><button className="icon-button notification-bell" aria-label={`Notifications${notifications.data?.unread?`, ${notifications.data.unread} unread`:''}`} onClick={()=>setNotificationsOpen(open=>!open)}><Bell size={21}/>{!!notifications.data?.unread&&<b>{notifications.data.unread>99?'99+':notifications.data.unread}</b>}</button><button className="icon-button profile-button" aria-label="Open account and Settings" onClick={()=>{setNotificationsOpen(false);setTab('settings');}}><UserRound size={21}/></button></div>
           <span className="environment">
             <span className="online-dot" />
             Demo funds · PayPal Sandbox
@@ -477,7 +477,7 @@ function WalletApp() {
         )}
         {tab === "home" && <HomeOverview balance={balance.data} loading={balance.isPending}
           urgent={attentionQuery.isPending||attentionQuery.isError?null:attention.filter(p=>p.trace?.urgency==='URGENT').length}
-          onSend={()=>{setSendRequested(true);setTab('payments');}}
+          onSend={()=>{setSendRequested(true);setTab('pay');}}
           onAdd={()=>{setTab('wallet');window.setTimeout(()=>window.dispatchEvent(new Event('wallet-add-money')),0);}}
           onActivity={()=>setTab('activity')} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select the exact saved requests, then review your batch.');}} onChat={()=>setAssistant(true)}/>}
         {tab==='pay'&&<><PayHub onSend={()=>setSendRequested(true)} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select payments to prepare an exact review.');}} onBills={()=>setTab('bills')}/><Drafts requested={sendRequested} requestedRecipient={recipientRequested} onRequestHandled={()=>{setSendRequested(false);setRecipientRequested(undefined);}} onChanged={refresh}/></>}

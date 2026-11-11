@@ -1120,6 +1120,18 @@ small {
 .mode-voice .assistant-surface.has-action {
   width: 460px;
 }
+.mode-voice .assistant-surface.is-compact { width: min(320px, calc(100vw - 24px)); }
+.mode-voice .is-compact .assistant-technical,
+.mode-voice .is-compact .assistant-welcome,
+.mode-voice .is-compact .assistant-footnote { display: none; }
+.mode-voice .is-compact .voice-hud { padding: 8px 0; gap: 8px; }
+.mode-voice .is-compact .guardian-orb.large { width: 60px; height: 60px; }
+.mode-voice .is-compact .state-recording .assistant-composer input,
+.mode-voice .is-compact .state-recording .assistant-composer button[type="submit"],
+.mode-voice .is-compact .state-thinking .assistant-composer,
+.mode-voice .is-compact .state-transcribing .assistant-composer { display: none; }
+.mode-voice .is-compact .state-recording .assistant-composer { width: fit-content; margin: 0 auto 12px; padding: 0; border: 0; background: transparent; }
+.mode-voice .is-compact .state-recording .composer-mic { min-width: 44px; min-height: 44px; }
 .mode-voice .assistant-surface .assistant-mode-switch {
   background: #ffffff0a;
 }

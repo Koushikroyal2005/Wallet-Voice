@@ -130,6 +130,7 @@ export function NotificationCenter({
                     View details
                   </button>
                 )}
+                <details><summary aria-label={`More actions for ${r.title}`}>More</summary>
                 {!r.read && (
                   <button
                     className="text-button"
@@ -146,6 +147,7 @@ export function NotificationCenter({
                 >
                   Dismiss notice
                 </button>
+                </details>
               </div>
             </article>
           ))}

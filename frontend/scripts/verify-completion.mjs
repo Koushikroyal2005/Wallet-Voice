@@ -252,7 +252,7 @@ try {
   await shot("split-requests-created");
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await navigate(page, "Activity");
-  await page.getByText('Documents & shared bill requests',{exact:true}).click();
+  await page.getByRole('button',{name:'Documents & Receipts',exact:true}).click();
   await page
     .getByRole("button", { name: "Import bill / invoice PDF", exact: true })
     .click();
@@ -299,7 +299,7 @@ try {
     .getByRole("button", { name: "Open account and Settings", exact: true })
     .click();
   await page
-    .locator(".settings-sections")
+    .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Notifications", exact: true })
     .click();
   await page

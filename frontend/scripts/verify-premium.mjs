@@ -37,6 +37,8 @@ try {
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.clock.install();
+    let deletes = 0;
+    let failDelete = true;
     const turns = [],
       errors = [];
     let batchState = "REVIEW",
@@ -169,7 +171,13 @@ try {
         };
       else if (path === "/api/assistant/status")
         data = { browser_tts_fallback: false };
-      else if (path.includes("/conversations/")) data = { messages: [] };
+      else if (path.includes("/conversations/")) {
+        if (route.request().method() === "DELETE") {
+          deletes++;
+          return route.fulfill({ status: failDelete ? 500 : 200, contentType: "application/json", body: JSON.stringify(failDelete ? { detail: "Fixture deletion failure" } : { status: "CLEARED" }) });
+        }
+        data = { messages: [] };
+      }
       else if (path === "/api/voice/transcribe")
         data = {
           transcript: "What is my balance?",
@@ -363,6 +371,19 @@ try {
         .evaluate((el) => getComputedStyle(el).animationName),
       "none",
     );
+    await conversation.getByText("Assistant details and voice preferences", {exact:true}).click();
+    const previousConversation = await page.evaluate(()=>localStorage.getItem("ai-wallet-conversation"));
+    await conversation.getByRole("button",{name:"New chat",exact:true}).click();
+    assert.equal(deletes, 0, "New chat must not delete server history");
+    assert.notEqual(await page.evaluate(()=>localStorage.getItem("ai-wallet-conversation")), previousConversation);
+    page.once("dialog", dialog=>dialog.accept());
+    await conversation.getByRole("button",{name:"Delete current conversation",exact:true}).click();
+    await conversation.getByText("Conversation was not deleted. Please retry.",{exact:true}).waitFor();
+    failDelete = false;
+    page.once("dialog", dialog=>dialog.accept());
+    await conversation.getByRole("button",{name:"Delete current conversation",exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('[role="alert"]'));
+    assert.equal(deletes, 2, "Explicit deletion retries only after user action");
     assert.deepEqual(errors, []);
     await page.close();
   }
