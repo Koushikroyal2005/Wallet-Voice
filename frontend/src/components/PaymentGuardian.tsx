@@ -3,6 +3,7 @@ import { api, operationKey, post } from '../lib/api';
 import { PayPalCheckoutPanel } from './PayPalCheckoutPanel';
 import { PaymentBatchReview } from './PaymentBatchReview';
 import { paymentStatus } from '../lib/formatting';
+import type {PaymentReview} from '../lib/paymentTypes';
 
 const amount = (value: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value / 100);
 const reasons: Record<string, string> = {
@@ -19,7 +20,7 @@ const reasons: Record<string, string> = {
 export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel }: {
   paymentId: string; initialSource?: string; onChanged: () => void; onCancel: () => void;
 }) {
-  const [review, setReview] = useState<any>();
+  const [review, setReview] = useState<PaymentReview>();
   const [source, setSource] = useState(initialSource || 'AI_WALLET');
   const [recognized, setRecognized] = useState(false);
   const [error, setError] = useState('');
@@ -30,7 +31,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
   useEffect(()=>{let closed=false;void api(`/api/product/sources/${paymentId}/eligibility`).then(result=>{if(!closed)setCapabilities(result);}).catch(()=>{});return()=>{closed=true;};},[paymentId]);
   const active = useRef(false);
   const load = async () => {
-    const result = await api(`/api/payments/${paymentId}/review`);
+    const result = await api<PaymentReview>(`/api/payments/${paymentId}/review`);
     setReview(result); return result;
   };
   useEffect(() => {
@@ -38,7 +39,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     const refresh = async () => {
       if (running) return;
       running = true;
-      try { const result = await api(`/api/payments/${paymentId}/review`); if (!disposed) { setReview(result); } }
+      try { const result = await api<PaymentReview>(`/api/payments/${paymentId}/review`); if (!disposed) { setReview(result); } }
       catch (e) { if (!disposed) setError((e as Error).message); }
       finally { running = false; }
     };

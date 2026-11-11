@@ -1,8 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpRight,
-  Download,
   Layers,
   Mic,
   Plus,
@@ -21,6 +20,7 @@ import { SplitHistory } from "./SplitMoney";
 import { NotificationCategories, RenewalControls } from "./PlanningControls";
 import {ActivityTimeline} from './ActivityTimeline';
 import {SettingsNavigation} from './SettingsNavigation';
+import {MoneyRequests} from './MoneyRequests';
 
 export type Destination =
   | "home"
@@ -59,39 +59,6 @@ type Source = {
   configured: boolean;
   approval: string;
   operations: string[];
-};
-type RecordItem = {
-  id: string;
-  merchant: string;
-  amount: number;
-  currency: string;
-  status: string;
-  attempt_id?: string;
-  receipt?: { journal_id: string };
-};
-type Batch = {
-  id: string;
-  status: string;
-  total: number;
-  currency: string;
-  created_at: string;
-  items: RecordItem[];
-};
-type Operation = {
-  id: string;
-  kind: string;
-  amount: number;
-  status: string;
-  reference: string;
-  created_at: string;
-};
-type ExternalRecord = {
-  order_id: string;
-  payment_request_id: string;
-  original_amount: number;
-  original_currency: string;
-  status: string;
-  capture_id?: string;
 };
 
 export function PayHub({
@@ -442,262 +409,17 @@ export function AccountsScreen() {
   );
 }
 
-export function ActivityScreen({
-  onBatch,
-  onPayment,
-  onChanged,
-}: {
-  onBatch: (id: string) => void;
-  onPayment: (id: string) => void;
-  onChanged: () => void;
+export function ActivityScreen({ onBatch, onPayment, onChanged }: {
+  onBatch: (id: string) => void; onPayment: (id: string) => void; onChanged: () => void;
 }) {
-  const batches = useQuery({
-    queryKey: ["batch-history"],
-    queryFn: () => api<Batch[]>("/api/product/batches"),
-  });
-  const operations = useQuery({
-    queryKey: ["transactions"],
-    queryFn: () => api<Operation[]>("/api/wallet/transactions"),
-  });
-  const requests = useQuery({
-    queryKey: ["money-requests"],
-    queryFn: () => api<RequestRow[]>("/api/product/money-requests"),
-  });
-  const external = useQuery({
-    queryKey: ["paypal-history"],
-    queryFn: () => api<ExternalRecord[]>("/api/paypal/payments"),
-  });
-  const [search, setSearch] = useState(""),
-    [filter, setFilter] = useState("All"),
-    [error, setError] = useState("");
-  const includes = (value: string) =>
-    value.toLowerCase().includes(search.toLowerCase());
-  return (
-    <div className="consumer-stack">
-      <ActivityTimeline onBatch={onBatch} onPayment={onPayment}/>
-      <button className="secondary" onClick={()=>setFilter("Documents")}>Documents & Receipts</button>
-      {filter === "Documents" && <><DocumentCenter/><button className="text-button" onClick={()=>setFilter("All")}>Close documents</button></>}
-      <details><summary>Shared bill requests</summary><SplitHistory/></details>
-      <details className="activity-archive"><summary>Detailed histories & money requests</summary>
-      <div className="toolbar">
-        <input
-          aria-label="Search activity"
-          placeholder="Search merchant, reference or status"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          aria-label="Activity filter"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        >
-          {[
-            "All",
-            "Batch payments",
-            "Wallet movements",
-            "Money requests",
-            "Processing",
-            "Failed",
-          ].map((v) => (
-            <option key={v}>{v}</option>
-          ))}
-        </select>
-      </div>
-      {(batches.isError || operations.isError || requests.isError) && (
-        <p role="alert">
-          Some activity could not load.{" "}
-          <button onClick={onChanged}>Refresh</button>
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-      {["All", "Batch payments", "Processing", "Failed"].includes(filter) && (
-        <section className="surface consumer-card">
-          <h2>Batch payments & statements</h2>
-          {Array.isArray(batches.data) &&
-            batches.data
-              .filter(
-                (b) =>
-                  includes(
-                    `${b.id} ${b.status} ${b.items.map((i) => i.merchant).join(" ")}`,
-                  ) &&
-                  (!["Processing", "Failed"].includes(filter) ||
-                    b.status ===
-                      (filter === "Processing" ? "PROCESSING" : "FAILED")),
-              )
-              .map((b) => (
-                <article className="record-row" key={b.id}>
-                  <div>
-                    <strong>
-                      {b.items.length} payments · {b.status.toLowerCase()}
-                    </strong>
-                    <small>
-                      {new Date(b.created_at).toLocaleString()} · {b.id}
-                    </small>
-                  </div>
-                  <div className="button-row">
-                    <button className="secondary" onClick={() => onBatch(b.id)}>
-                      View batch
-                    </button>
-                    <a
-                      className="document-link"
-                      href={`/api/product/documents/batches/${b.id}.pdf`}
-                    >
-                      <Download size={16} />
-                      Statement PDF
-                    </a>
-                  </div>
-                  <details>
-                    <summary>Individual payment records</summary>
-                    {b.items.map((i) => (
-                      <p key={i.id}>
-                        {i.merchant} · {currencyMoney(i.amount, i.currency)} ·{" "}
-                        {i.status}{" "}
-                        {i.attempt_id && (
-                          <>
-                            <button
-                              className="text-button"
-                              onClick={() => onPayment(i.id)}
-                            >
-                              Details
-                            </button>
-                            <a
-                              className="document-link"
-                              href={`/api/product/documents/payments/${i.id}.pdf`}
-                            >
-                              Payment PDF
-                            </a>
-                          </>
-                        )}
-                      </p>
-                    ))}
-                  </details>
-                </article>
-              ))}
-          {(!Array.isArray(batches.data) || !batches.data.length) && (
-            <p>
-              No batch records yet. Prepare one from Inbox or ask your
-              assistant.
-            </p>
-          )}
-        </section>
-      )}
-      {["All", "Wallet movements"].includes(filter) && (
-        <section className="surface consumer-card">
-          <h2>Wallet movements</h2>
-          {Array.isArray(operations.data) &&
-            operations.data
-              .filter((o) =>
-                includes(`${o.reference} ${o.kind} ${o.created_at}`),
-              )
-              .map((o) => (
-                <article className="record-row" key={o.id}>
-                  <div>
-                    <strong>
-                      {o.kind.replaceAll("_", " ")} ·{" "}
-                      {currencyMoney(o.amount, "INR")}
-                    </strong>
-                    <small>
-                      {o.status} · {new Date(o.created_at).toLocaleString()} ·{" "}
-                      {o.reference}
-                    </small>
-                  </div>
-                  <span className="badge">Simulated</span>
-                </article>
-              ))}
-          {Array.isArray(operations.data) && !operations.data.length && (
-            <p>No recorded wallet movements.</p>
-          )}
-        </section>
-      )}
-      {filter === "All" && (
-        <section className="surface consumer-card">
-          <h2>PayPal Sandbox records</h2>
-          {external.isError && (
-            <p role="alert">
-              PayPal history unavailable.{" "}
-              <button onClick={() => void external.refetch()}>Retry</button>
-            </p>
-          )}
-          {Array.isArray(external.data) &&
-            external.data
-              .filter((r) =>
-                includes(`${r.order_id} ${r.status} ${r.capture_id || ""}`),
-              )
-              .map((r) => (
-                <article className="record-row" key={r.order_id}>
-                  <div>
-                    <strong>
-                      {currencyMoney(r.original_amount, r.original_currency)} ·{" "}
-                      {r.status}
-                    </strong>
-                    <small>
-                      PayPal Sandbox · Order {r.order_id} · Capture{" "}
-                      {r.capture_id || "Not recorded"}
-                    </small>
-                  </div>
-                  <button
-                    className="secondary"
-                    onClick={() => onPayment(r.payment_request_id)}
-                  >
-                    View provider record
-                  </button>
-                </article>
-              ))}
-          {Array.isArray(external.data) && !external.data.length && (
-            <p>
-              No external orders recorded. PayPal checkout does not use the
-              simulated wallet.
-            </p>
-          )}
-        </section>
-      )}
-      {["All", "Money requests"].includes(filter) && (
-        <section className="surface consumer-card">
-          <h2>Money you've requested</h2>
-          {Array.isArray(requests.data) &&
-            requests.data
-              .filter((r) => includes(`${r.payer} ${r.note} ${r.status}`))
-              .map((r) => (
-                <article className="record-row" key={r.id}>
-                  <div>
-                    <strong>
-                      {r.payer} · {currencyMoney(r.amount, r.currency)}
-                    </strong>
-                    <small>
-                      {r.status} · Simulated request · Not proof of receipt
-                    </small>
-                    <p>{r.note}</p>
-                  </div>
-                  {r.status === "REQUESTED" && (
-                    <button
-                      className="secondary"
-                      onClick={async () => {
-                        try {
-                          await post(
-                            `/api/product/money-requests/${r.id}/cancel`,
-                          );
-                          onChanged();
-                        } catch (e) {
-                          setError((e as Error).message);
-                        }
-                      }}
-                    >
-                      Cancel request
-                    </button>
-                  )}
-                </article>
-              ))}
-          {(!Array.isArray(requests.data) || !requests.data.length) && (
-            <p>No money requests saved.</p>
-          )}
-        </section>
-      )}
-      <p className="assistant-privacy">
-        Wallet-Voice records are not merchant tax invoices. Uploaded invoices remain unverified; refund records appear only when actually recorded.
-      </p>
-      </details>
-    </div>
-  );
+  const [documents, setDocuments] = useState(false);
+  return <div className="consumer-stack">
+    <ActivityTimeline onBatch={onBatch} onPayment={onPayment}/>
+    <button className="secondary" onClick={()=>setDocuments(!documents)} aria-expanded={documents}>Documents & Receipts</button>
+    {documents && <DocumentCenter/>}
+    <MoneyRequests onChanged={onChanged}/>
+    <SplitHistory/>
+  </div>;
 }
 
 export function BillsScreen({ onChanged }: { onChanged: () => void }) {
@@ -869,14 +591,16 @@ export function SettingsScreen({
   onLock: () => void;
 }) {
   const [section, setSection] = useState("Overview");
+  const detail = useRef<HTMLDivElement>(null);
+  useEffect(()=>{window.scrollTo({top:0,behavior:'instant'});if(section!=='Overview')detail.current?.focus({preventScroll:true});},[section]);
   const [theme, setTheme] = useState(
     () => localStorage.getItem("wallet-theme") || "light",
   );
   return (
     <div className="consumer-stack settings-layout">
       {section !== "Overview" && <button className="secondary settings-back" onClick={() => setSection("Overview")}>Back to Settings</button>}
-      <SettingsNavigation section={section} onSelect={setSection}/>
-      <div className="consumer-stack settings-detail">
+      <SettingsNavigation section={section} onSelect={setSection} onNavigate={onNavigate}/>
+      <div className="consumer-stack settings-detail" ref={detail} tabIndex={-1}>
       {section === "Overview" && (
         <>
           <section className="surface consumer-card">
@@ -885,23 +609,7 @@ export function SettingsScreen({
             <p>
               Single-owner prototype · Simulated funds · PayPal Sandbox separate
             </p>
-            <div className="settings-list">
-              {[
-                ["Wallet", "wallet"],
-                ["Accounts & Cards", "accounts"],
-                ["Statements & Receipts", "activity"],
-                ["Bills & Subscriptions", "bills"],
-              ].map(([label, d]) => (
-                <button
-                  className="secondary"
-                  key={d}
-                  onClick={() => onNavigate(d as Destination)}
-                >
-                  {label}
-                  <ArrowUpRight size={18} />
-                </button>
-              ))}
-            </div>
+            <p>Choose a category to manage your wallet. Only capabilities actually connected in this demo are shown as available.</p>
           </section>
           <button className="secondary" onClick={onLock}>
             Lock wallet / Sign out
@@ -909,9 +617,7 @@ export function SettingsScreen({
         </>
       )}
       {section === "Personal Details" && <section className="surface consumer-card"><h2>Your account</h2><p>This is a single-owner demo. Personal profile editing and real bank linking are not available.</p></section>}
-      {section === "Security" && (
-        <Permissions focusedSection="security" onChanged={onChanged} />
-      )}
+      {section === "Security" && <><Permissions focusedSection="security" onChanged={onChanged}/><p>Repeated incorrect PIN attempts may temporarily lock approval. Voice recognition never replaces your secure authorization.</p><button className="secondary" onClick={onLock}>Lock wallet / Sign out</button></>}
       {section === "AutoPay & Permissions" && <Permissions focusedSection="autopay" onChanged={onChanged}/>}
       {section === "Notifications" && (
         <>

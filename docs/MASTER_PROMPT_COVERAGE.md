@@ -1,5 +1,7 @@
 # Master prompt coverage and second-pass implementation
 
+Current completion: [FINAL_COMPLETION.md](FINAL_COMPLETION.md). The earlier partial Unicode/form/Settings/history/visual items below are historical and were closed in the final repository pass. Provider capabilities explicitly unavailable in the prototype and unperformed physical/live checks remain separate limitations.
+
 The entire supplied 3,000+ line brief was reread in sequential chunks. This checklist maps its 31 parts to actual source, rather than treating a successful build as proof that every requested feature exists. It supplements, and supersedes the remaining-scope list in, `CONSUMER_PRODUCT.md`.
 
 Status meanings: **implemented** means runnable local code; **verified** means an executed check is recorded below; **conditional/future** means the brief explicitly requires real provider/account/device support that this prototype does not possess; **partial** is not a claim of completion.

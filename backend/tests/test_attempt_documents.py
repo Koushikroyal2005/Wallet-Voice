@@ -7,6 +7,10 @@ from app.models import PaymentAttempt, JournalTransaction, PayPalOrder, PayPalWe
 from app.services import reserve, finalize, wallet, balances
 from app.payment_batches import create_batch, view
 from app.models import PaymentBatchItem
+from io import BytesIO
+from pypdf import PdfReader
+
+def pdf_text(data):return '\n'.join(page.extract_text() for page in PdfReader(BytesIO(data)).pages).encode('utf-8')
 
 def test_failed_batch_receipt_cannot_inherit_later_retry_journal(client, factory):
     with factory() as db:
@@ -23,11 +27,11 @@ def test_failed_batch_receipt_cannot_inherit_later_retry_journal(client, factory
         assert balances(db,wallet(db))['posted_balance']==before-p.amount
         old=view(db,batch)
         assert old['items'][0]['status']=='FAILED' and old['items'][0]['receipt'] is None
-    failed=client.get(f'/api/product/documents/attempts/{failed_id}.pdf').content
-    succeeded=client.get(f'/api/product/documents/attempts/{success_id}.pdf').content
+    failed=pdf_text(client.get(f'/api/product/documents/attempts/{failed_id}.pdf').content)
+    succeeded=pdf_text(client.get(f'/api/product/documents/attempts/{success_id}.pdf').content)
     assert b'Journal: Not recorded' in failed and b'Actual recorded status: FAILED' in failed
     assert b'retry-settled-reference' in succeeded and b'Actual recorded status: SUCCEEDED' in succeeded
-    statement=client.get(f'/api/product/documents/batches/{batch_id}.pdf').content
+    statement=pdf_text(client.get(f'/api/product/documents/batches/{batch_id}.pdf').content)
     assert b'Journal: Not posted' in statement and b'Status: FAILED' in statement
 
 def test_failed_and_later_success_documents_are_distinct(client, factory):
@@ -44,13 +48,13 @@ def test_failed_and_later_success_documents_are_distinct(client, factory):
     assert by_id[failed_id]['download_url']!=by_id[success_id]['download_url']
     failed=client.get(by_id[failed_id]['download_url'])
     succeeded=client.get(by_id[success_id]['download_url'])
-    assert b'Actual recorded status: FAILED' in failed.content
-    assert b'failed-reference' in failed.content and b'sandbox-capture' not in failed.content
-    assert b'Actual recorded status: SUCCEEDED' in succeeded.content
-    assert b'sandbox-capture' in succeeded.content and b'sandbox-order' in succeeded.content
+    assert b'Actual recorded status: FAILED' in pdf_text(failed.content)
+    assert b'failed-reference' in pdf_text(failed.content) and b'sandbox-capture' not in pdf_text(failed.content)
+    assert b'Actual recorded status: SUCCEEDED' in pdf_text(succeeded.content)
+    assert b'sandbox-capture' in pdf_text(succeeded.content) and b'sandbox-order' in pdf_text(succeeded.content)
     assert failed.headers['cache-control']=='no-store'
     assert success_id in succeeded.headers['content-disposition']
-    assert client.get(f'/api/product/documents/payments/{pid}.pdf').content==succeeded.content
+    assert pdf_text(client.get(f'/api/product/documents/payments/{pid}.pdf').content)==pdf_text(succeeded.content)
     assert client.get('/api/product/documents/attempts/missing.pdf').status_code==404
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(JournalTransaction))==before
@@ -65,7 +69,7 @@ def test_refund_record_preserves_original_capture(client,factory):
     record=client.get(f'/api/product/documents/attempts/{ident}').json()
     assert record['capture_id']=='original-capture' and record['status']=='REFUNDED'
     assert record['refunds'][0]['reference']=='refund-reference'
-    pdf=client.get(f'/api/product/documents/attempts/{ident}.pdf').content
+    pdf=pdf_text(client.get(f'/api/product/documents/attempts/{ident}.pdf').content)
     assert b'original-capture' in pdf and b'refund-reference' in pdf and b'Provider refund amount: USD 1.19' in pdf
 
 def test_attention_read_state_survives_stage_change(client,monkeypatch):

@@ -22,7 +22,7 @@
 }
 .document-preview .guardian-details {grid-template-columns:1fr;gap:16px;}
 .document-preview .guardian-details dd {font-size:14px;font-weight:500;word-break:normal;overflow-wrap:anywhere;}
-.split-confirm {position:sticky;bottom:0;z-index:1;width:100%;margin-top:12px;}
+.split-confirm {width:100%;margin-top:12px;}
 @media (min-width: 769px) {
   .dialog.notification-popover {
     position: fixed;
@@ -255,11 +255,6 @@
   flex-shrink: 0;
   color: var(--accent);
 }
-.settings-sections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 .settings-navigation { display: grid; gap: 24px; }
 .settings-navigation h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px 12px; }
 .settings-row-group { border: 1px solid var(--color-border); border-radius: 16px; overflow: hidden; background: var(--surface); }
@@ -270,20 +265,18 @@
 .settings-row-group button:hover, .settings-row-group button[aria-current] { background: var(--color-primary-soft); }
 .settings-navigation.has-detail { display: none; }
 .settings-detail { min-width: 0; align-content: start; }
+.confirmation-footer { display: flex; flex-wrap: wrap; gap: 12px; position: sticky; bottom: 0; padding: 12px 0; background: var(--surface); }
+.confirmation-footer > button { flex: 1; min-height: 44px; }
+.secure-pin-input { font-variant-numeric: tabular-nums; letter-spacing: .5em; font-size: 24px; min-height: 52px; }
 @media (min-width: 1024px) {
   .settings-layout { grid-template-columns: 280px minmax(0, 1fr); align-items: start; }
   .settings-layout > .settings-back { grid-column: 1 / -1; justify-self: start; }
   .settings-layout .settings-navigation.has-detail { display: grid; }
 }
-.settings-sections .active,
 .notification-tabs .active {
   color: var(--color-primary);
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
-}
-.settings-list {
-  display: grid;
-  gap: 12px;
 }
 .voice-setting-list {
   display: grid;
@@ -310,11 +303,6 @@
   height: 22px;
   flex-shrink: 0;
   accent-color: var(--color-primary);
-}
-.settings-list button {
-  display: flex;
-  justify-content: space-between;
-  text-align: left;
 }
 .notification-tabs {
   display: flex;
@@ -388,6 +376,12 @@
 .batch-outcome strong {
   font-size: 22px;
 }
+.batch-review-amount { display: grid; gap: 8px; padding: 16px 0; }
+.batch-review-amount strong { font-size: clamp(28px, 5vw, 38px); font-variant-numeric: tabular-nums; }
+.batch-review-amount p { margin: 0; color: var(--muted); }
+.payment-success-icon { color: var(--color-success); display: block; margin-bottom: 12px; animation: payment-confirmed .7s ease-out; }
+@keyframes payment-confirmed { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .payment-success-icon { animation: none; } }
 .selection-bar {
   position: sticky;
   bottom: 20px;
@@ -469,10 +463,6 @@ small,
 .form-stack {
   gap: 20px;
 }
-.dialog .form-stack > button:last-child {
-  position: sticky;
-  bottom: 0;
-}
 .secondary,
 .filter-tabs,
 .filter-tabs button,
@@ -495,11 +485,6 @@ small,
 button.secondary:hover {
   background: var(--color-surface-muted);
   color: var(--ink);
-}
-.settings-sections button.active,
-.settings-sections button.active:hover {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
 }
 .page-heading button.secondary {
   background: var(--surface);
@@ -585,7 +570,7 @@ button.secondary:hover {
     margin: 0;
   }
   .assistant-launcher {
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px) + var(--assistant-keyboard, 0px) + var(--assistant-avoidance, 0px));
   }
   .secondary-navigation,
   .sidebar-bottom {
@@ -648,14 +633,6 @@ button.secondary:hover {
     flex-wrap: wrap;
     gap: 12px;
   }
-  .settings-sections {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .settings-sections button {
-    font-size: 12px;
-    padding: 10px;
-  }
   .home-overview {
     gap: 16px;
   }
@@ -672,7 +649,7 @@ button.secondary:hover {
     flex-wrap: wrap;
   }
   .toolbar input {
-    flex: 1;
+    flex: 1 1 100%;
     min-width: 0;
   }
   .selection-bar {

@@ -18,6 +18,26 @@ export function FloatingAssistant({
   const [active, setActive] = useState(false);
   const previousFocus = useRef<HTMLElement | null>(null);
   const surface = useRef<HTMLElement>(null);
+  const launcher = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let frame = 0, offset = 0;
+    const update = () => {
+      frame = 0;
+      const node=launcher.current;if(!node)return;
+      if(active||innerWidth>768||document.querySelector('dialog[open]')){offset=0;node.style.setProperty('--assistant-avoidance','0px');return;}
+      const box=node.getBoundingClientRect();
+      const baseTop=box.top+offset;
+      const controls=[...document.querySelectorAll<HTMLElement>('main button, main input, main select, main textarea, main a')].map(element=>element.getBoundingClientRect()).filter(rect=>rect.width&&rect.height);
+      const free=(lift:number)=>!controls.some(rect=>rect.left<box.right+8&&rect.right>box.left-8&&rect.top<baseTop-lift+box.height+8&&rect.bottom>baseTop-lift-8);
+      const candidates=Array.from({length:Math.max(1,Math.ceil((baseTop-80)/16))},(_,index)=>index*16);
+      offset=candidates.find(lift=>baseTop-lift>80&&free(lift))??0;
+      node.style.setProperty('--assistant-avoidance',`${offset}px`);
+    };
+    const schedule=()=>{if(!frame)frame=requestAnimationFrame(update);};
+    const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true});
+    window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);schedule();
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);};
+  },[active]);
   const closeHandler = useRef(onClose);
   closeHandler.current = onClose;
   const assistant = useWalletAssistant({
@@ -165,7 +185,7 @@ export function FloatingAssistant({
           </section>
         </>
       )}
-      <div className="assistant-launcher">
+      <div className="assistant-launcher" ref={launcher}>
         <AssistantOrb
           state={active ? assistant.state : "IDLE"}
           level={assistant.level}

@@ -1,5 +1,9 @@
 # Testing
 
+## Final completion verification — 12 November 2026
+
+Current commands and evidence: [FINAL_COMPLETION.md](FINAL_COMPLETION.md). Latest full local pytest: **293 passed / 101 skipped**, 191.43 seconds (100 PostgreSQL-only tests plus one optional local Web Push dependency skipped). Separate isolated PostgreSQL: **100 passed**, exit 0; final-source rerun also **100 passed**. TypeScript/Vite, product, six-size consumer, six-size premium assistant, completion, Guardian, V3, voice and PayPal fixture browser suites passed. Unicode PDFs were rendered and inspected. Neither fixtures nor skipped tests are live-provider evidence. Prior counts below are historical.
+
 ## Final engineering audit — 12 November 2026
 
 See [FINAL_ENGINEERING_AUDIT.md](FINAL_ENGINEERING_AUDIT.md) for commands, changed files, screenshots and limitations. Latest local backend: **286 passed / 100 skipped** (99 PostgreSQL-only plus one missing optional Web Push dependency). Separate isolated PostgreSQL: **99 passed / zero skipped or failed**. TypeScript/Vite, product, consumer (six viewports), completion, premium assistant, Guardian and V3 browser journeys passed. Provider/audio fixtures are explicitly separated from actual isolated simulated-wallet journals. No live provider or remote GitHub CI result is claimed. No development data reset or application deployment.

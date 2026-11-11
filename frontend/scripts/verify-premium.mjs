@@ -30,9 +30,11 @@ try {
   }
   browser = await chromium.launch({ headless: true });
   for (const [width, height] of [
+    [360, 800],
     [390, 844],
     [430, 932],
     [768, 1024],
+    [1024, 900],
     [1440, 900],
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
@@ -126,6 +128,10 @@ try {
       id: "fixture-batch",
       status: batchState,
       source: "AI_WALLET",
+      currency: "INR",
+      snapshot_hash: "FIXTURE-SNAPSHOT-NOT-AUTHORITY",
+      funding_shortfall: 0,
+      expires_at: new Date(Date.now()+300000).toISOString(),
       total: 165000,
       available_balance: 1000000,
       reserved_amount: 0,
@@ -134,11 +140,14 @@ try {
       items: payments.map((p) => ({
         ...p,
         blocked: false,
+        acknowledged: false,
+        attempt_id: batchState === 'SUCCEEDED' ? `FIXTURE-ATTEMPT-${p.id}` : null,
         reason_codes: [],
         receipt:
           batchState === "SUCCEEDED"
             ? {
                 journal_id: "FIXTURE-JOURNAL-" + p.id,
+                operation_id: "FIXTURE-OPERATION-" + p.id,
                 status: "SUCCEEDED",
                 timestamp: new Date().toISOString(),
               }
@@ -388,7 +397,7 @@ try {
     await page.close();
   }
   console.log(
-    "PASSED: premium assistant at 390/430/768/1440: stable overlay, measured audio ring, navigation continuity, editable transcript opt-in, thinking and balance cards, shared chat, read-only collapse, persistent approval/error, duplicate approval guard, track cleanup, reduced motion and simulated keyboard viewport. All provider/payment responses in this suite are fixtures.",
+    "PASSED: premium assistant at 360/390/430/768/1024/1440: stable overlay, measured audio ring, navigation continuity, editable transcript opt-in, thinking and balance cards, shared chat, read-only collapse, persistent approval/error, duplicate approval guard, track cleanup, reduced motion and simulated keyboard viewport. All provider/payment responses in this suite are fixtures.",
   );
 } finally {
   await browser?.close();

@@ -18,6 +18,7 @@ import {
 import { money } from "../lib/formatting";
 import { Dialog } from "./Dialog";
 import { WalletPinDialog } from "./WalletPinDialog";
+import { ChangePinDialog } from "./ChangePinDialog";
 
 export function WalletView({
   balance,
@@ -513,7 +514,6 @@ export function Permissions({ onChanged, focusedSection }: { onChanged: () => vo
   const [authorize, setAuthorize] = useState<any>();
   const [editPolicy, setEditPolicy] = useState<any>();
   const [changePin, setChangePin] = useState(false);
-  const [pin, setPin] = useState({ current: "", next: "", confirm: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function run(action: () => Promise<void>) {
@@ -639,7 +639,6 @@ export function Permissions({ onChanged, focusedSection }: { onChanged: () => vo
         <button
           className="secondary"
           onClick={() => {
-            setPin({ current: "", next: "", confirm: "" });
             setChangePin(true);
             setError("");
           }}
@@ -783,63 +782,7 @@ export function Permissions({ onChanged, focusedSection }: { onChanged: () => vo
         />
       )}
       {changePin && (
-        <Dialog
-          title="Change your wallet PIN"
-          busy={busy}
-          onClose={() => {setChangePin(false);setPin({current:"",next:"",confirm:""});setError("");}}
-        >
-          <div className="form-stack">
-            {[
-              ["current", "Current PIN"],
-              ["next", "New PIN"],
-              ["confirm", "Confirm new PIN"],
-            ].map(([key, label]) => (
-              <label className="field" key={key}>
-                {label}
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete={
-                    key === "current" ? "current-password" : "new-password"
-                  }
-                  maxLength={6}
-                  value={pin[key as keyof typeof pin]}
-                  onChange={(e) =>
-                    setPin({ ...pin, [key]: e.target.value.replace(/\D/g, "") })
-                  }
-                />
-              </label>
-            ))}
-            <p>Changing your PIN cancels all unused approvals.</p>
-            {pin.confirm && pin.next !== pin.confirm && <p className="error-banner" role="alert">The new PINs do not match. Enter the same six digits in both new PIN fields.</p>}
-            {(!pin.current || pin.current.length !== 6 || pin.next.length !== 6) && <small>Use six digits in each field. Your PIN stays in this secure form, never in chat.</small>}
-            {error && (
-              <p className="error-banner" role="alert">
-                {error}
-              </p>
-            )}
-            <button
-              disabled={
-                busy ||
-                pin.current.length !== 6 ||
-                pin.next.length !== 6 ||
-                pin.next !== pin.confirm
-              }
-              onClick={() =>
-                run(async () => {
-                  await post("/api/security/pin/change", {
-                    current_pin: pin.current,
-                    new_pin: pin.next,
-                  });
-                  setChangePin(false);
-                  setPin({ current: "", next: "", confirm: "" });
-                })
-              }
-            >
-              Update PIN
-            </button>
-          </div>
-        </Dialog>
+        <ChangePinDialog onClose={()=>setChangePin(false)} onChanged={onChanged}/>
       )}
       {editPolicy && (
         <Dialog

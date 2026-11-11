@@ -19,7 +19,7 @@ export async function navigate(page, name) {
   if (await back.isVisible()) await back.click();
   if (name === "Auto-pay & security") return;
   return page
-    .locator(".settings-list")
+    .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name, exact: true })
     .click();
 }

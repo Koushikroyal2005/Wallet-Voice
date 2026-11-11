@@ -87,6 +87,10 @@ try {
   async function shot(name) {
     if (name.startsWith("activity-") || name === "dark-activity")
       await page.getByRole("heading", { name: "Your Activity", exact: true }).locator("..").locator(".record-row").first().waitFor();
+    if (/^inbox-(360|390|430)$/.test(name)) assert.equal(await page.evaluate(()=>{
+      const orb=document.querySelector('.assistant-launcher')?.getBoundingClientRect();
+      return !!orb&&[...document.querySelectorAll('button.row-action')].some(button=>{const r=button.getBoundingClientRect();return r.width>0&&r.left<orb.right&&r.right>orb.left&&r.top<orb.bottom&&r.bottom>orb.top;});
+    }),false,'Assistant launcher must not cover mobile review controls');
     await page.screenshot({
       path: join(output, name + ".png"),
       animations: "disabled",
@@ -141,7 +145,10 @@ try {
       await page.getByRole("dialog").waitFor({state:"detached"});
       await page.getByRole("button", { name: /^Notifications/ }).click();
     }
-    await page.getByRole("button", { name: "AI Updates", exact: true }).click();
+    for (const section of ['All','Needs Review','AI Updates']) {
+      await page.getByRole('dialog').getByRole('button',{name:section,exact:true}).click();
+      await shot(`notifications-${section.toLowerCase().replaceAll(' ','-')}-${width}`);
+    }
     await shot(`notifications-${width}`);
     await page.keyboard.press("Escape");
     await navigate(page, "Accounts & Cards");
@@ -151,6 +158,22 @@ try {
       .getByRole("button", { name: "Open account and Settings", exact: true })
       .click();
     await shot(`settings-${width}`);
+    for (const section of ['Security','AutoPay & Permissions','Notifications','AI & Voice','Appearance','Privacy & Data']) {
+      await page.getByRole('navigation',{name:'Settings sections'}).getByRole('button',{name:section,exact:true}).click();
+      await shot(`settings-${section.toLowerCase().replaceAll(' ','-')}-${width}`);
+      if (section==='Security') {
+        await page.getByRole('button',{name:'Change PIN',exact:true}).click();
+        await shot(`pin-current-${width}`);
+        await page.getByLabel('Current PIN',{exact:true}).fill('123456');
+        await page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
+        await shot(`pin-new-${width}`);
+        await page.getByLabel('New PIN',{exact:true}).fill('789012');
+        await page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
+        await shot(`pin-confirm-${width}`);
+        await page.keyboard.press('Escape');
+      }
+      await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
+    }
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await navigate(page, "Home");
@@ -269,7 +292,7 @@ try {
     .waitFor();
   await shot("activity-documents");
   // Presentation-only partial and pending responses, explicitly not settlement evidence.
-  for (const status of ["PARTIAL", "PROCESSING"]) {
+  for (const status of ["PARTIAL", "PROCESSING", "FAILED"]) {
     await page.route(`**/api/payment-batches/${settled.id}`, (route) =>
       route.fulfill({
         contentType: "application/json",
@@ -277,13 +300,13 @@ try {
           ...settled,
           status,
           items: settled.items.map((i, n) =>
-            n
+            n || status==='FAILED'
               ? {
                   ...i,
-                  status: status === "PARTIAL" ? "FAILED" : "PROCESSING",
+                  status: status !== "PROCESSING" ? "FAILED" : "PROCESSING",
                   receipt: null,
                   failure_reason:
-                    status === "PARTIAL"
+                    status !== "PROCESSING"
                       ? "Isolated browser fixture denial"
                       : null,
                 }
@@ -302,7 +325,7 @@ try {
         name:
           status === "PARTIAL"
             ? "Some payments need attention"
-            : "Payments processing",
+            : status === 'FAILED' ? 'Payments failed' : "Payments processing",
         exact: true,
       })
       .waitFor();
@@ -332,12 +355,15 @@ try {
   await page.getByRole('button',{name:'Security',exact:true}).click();
   await page.getByRole('button',{name:'Change PIN',exact:true}).click();
   await page.getByLabel('Current PIN',{exact:true}).fill('123456');
+  await page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
   await page.getByLabel('New PIN',{exact:true}).fill('654321');
+  await page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
   await page.getByLabel('Confirm new PIN',{exact:true}).fill('654320');
   assert.ok(await page.getByRole('button',{name:'Update PIN',exact:true}).isDisabled());
   await shot('change-pin-mismatch');
   await page.getByLabel('Confirm new PIN',{exact:true}).fill('654321');
   await page.getByRole('button',{name:'Update PIN',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'detached'});
   await page.reload();await page.getByLabel('Wallet PIN',{exact:true}).fill('654321');
   await page.getByRole('button',{name:'Unlock wallet',exact:true}).click();
@@ -352,6 +378,12 @@ try {
     await navigate(page, screen);
     await shot(`dark-${screen.toLowerCase().replaceAll(" ","-")}`);
   }
+  await page.route('**/api/product/notifications',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({items:[],unread:0,mode:'explicit-empty-fixture'})}));
+  await page.reload();
+  await page.getByRole('button',{name:/^Notifications/}).click();
+  await page.getByText('No notices in this section.',{exact:true}).waitFor();
+  await shot('notification-empty-fixture');
+  await page.keyboard.press('Escape');
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(

@@ -247,7 +247,7 @@ export function PlanningInsight({
       </span>
       <h3>
         {q.data.urgent_ids.length
-          ? `${q.data.urgent_ids.length} payments are expiring soon`
+          ? `${q.data.urgent_ids.length} ${q.data.urgent_ids.length===1?'payment is':'payments are'} expiring soon`
           : "Your next steps, in one place."}
       </h3>
       {q.data.urgent_ids.length > 1 && (

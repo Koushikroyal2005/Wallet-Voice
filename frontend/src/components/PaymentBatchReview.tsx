@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, post } from "../lib/api";
 import { money, currencyMoney, paymentStatus } from "../lib/formatting";
+import type {BatchReview} from '../lib/paymentTypes';
+import {SecurePinInput} from './FormControls';
+import {CheckCircle2} from 'lucide-react';
 
 export function PaymentBatchReview({
   batchId,
@@ -12,7 +15,7 @@ export function PaymentBatchReview({
   onCancel: () => void;
 }) {
   const [reviewId, setReviewId] = useState(batchId);
-  const [batch, setBatch] = useState<any>();
+  const [batch, setBatch] = useState<BatchReview>();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +39,7 @@ export function PaymentBatchReview({
     let disposed = false;
     const load = async () => {
       try {
-        const data = await api(`/api/payment-batches/${reviewId}`);
+        const data = await api<BatchReview>(`/api/payment-batches/${reviewId}`);
         if (!disposed) setBatch(data);
       } catch (e) {
         if (!disposed) setError((e as Error).message);
@@ -64,7 +67,7 @@ export function PaymentBatchReview({
         setPin("");
       }
       setBatch(
-        await post(`/api/payment-batches/${reviewId}/confirm`, {
+        await post<BatchReview>(`/api/payment-batches/${reviewId}/confirm`, {
           approval_token: token.current,
         }),
       );
@@ -97,6 +100,7 @@ export function PaymentBatchReview({
       {!batch && <p role="status">Loading the exact server review…</p>}
       {batch && (
         <>
+          {batch.status==='REVIEW'&&<div className="batch-review-amount" id={`batch-amount-${batchId}`}><span>Ready to pay</span><strong>{Object.entries(currencyTotals).map(([currency,total])=>currencyMoney(total,currency)).join(' · ')}</strong><p>{batch.items.length} payments selected · Simulated wallet</p></div>}
           <ol className="batch-progress" aria-label="Batch decision timeline">
             <li>Exact requests selected</li>
             <li>
@@ -119,20 +123,21 @@ export function PaymentBatchReview({
               className={`batch-outcome outcome-${batch.status.toLowerCase()}`}
               role="status"
             >
+              {batch.status==='SUCCEEDED'&&<CheckCircle2 className="payment-success-icon" size={32} aria-hidden="true"/>}
               <strong>
                 {
-                  batch.items.filter((i: any) => i.status === "SUCCEEDED")
+                  batch.items.filter((i) => i.status === "SUCCEEDED")
                     .length
                 }{" "}
                 of {batch.items.length} payments completed
               </strong>
               <p>
                 {
-                  batch.items.filter((i: any) => i.status === "PROCESSING")
+                  batch.items.filter((i) => i.status === "PROCESSING")
                     .length
                 }{" "}
                 processing ·{" "}
-                {batch.items.filter((i: any) => i.status === "FAILED").length}{" "}
+                {batch.items.filter((i) => i.status === "FAILED").length}{" "}
                 failed
               </p>
               <small>
@@ -142,7 +147,7 @@ export function PaymentBatchReview({
             </div>
           )}
           <ul className="batch-items">
-            {batch.items.map((item: any) => (
+            {batch.items.map((item) => (
               <li key={item.id}>
                 <div>
                   <strong>{item.merchant}</strong>
@@ -179,7 +184,7 @@ export function PaymentBatchReview({
                     onClick={async () => {
                       setBusy(true);
                       try {
-                        const next = await post(
+                        const next = await post<BatchReview>(
                           `/api/payment-batches/${reviewId}/acknowledge`,
                           { payment_id: item.id },
                         );
@@ -226,7 +231,7 @@ export function PaymentBatchReview({
                     </dl>
                     <a
                       className="document-link"
-                      href={`/api/product/documents/payments/${item.id}.pdf`}
+                      href={`/api/product/documents/attempts/${item.attempt_id}.pdf`}
                     >
                       Download payment PDF
                     </a>
@@ -236,10 +241,6 @@ export function PaymentBatchReview({
             ))}
           </ul>
           <dl className="batch-totals">
-            <div>
-              <dt>Batch reference</dt>
-              <dd className="safe-url">{batch.id}</dd>
-            </div>
             {Object.keys(currencyTotals).map((currency) => (
               <div key={`recorded-${currency}`}>
                 <dt>Successfully recorded · {currency}</dt>
@@ -247,12 +248,7 @@ export function PaymentBatchReview({
                   {currencyMoney(
                     batch.items
                       .filter(
-                        (i: {
-                          currency: string;
-                          status: string;
-                          receipt?: { journal_id?: string };
-                          amount: number;
-                        }) =>
+                        (i) =>
                           i.currency === currency &&
                           i.status === "SUCCEEDED" &&
                           i.receipt?.journal_id,
@@ -285,6 +281,7 @@ export function PaymentBatchReview({
               </div>
             )}
           </dl>
+          <details><summary>Batch reference</summary><p className="safe-url">{batch.id}</p></details>
           {!walletCurrencyOnly && (
             <p>
               These currencies cannot be combined into one wallet total. Follow
@@ -312,17 +309,16 @@ export function PaymentBatchReview({
               <label htmlFor={`batch-pin-${batchId}`}>
                 Six-digit wallet PIN
               </label>
-              <input
+              <SecurePinInput
                 id={`batch-pin-${batchId}`}
-                type="password"
-                inputMode="numeric"
                 autoComplete="off"
-                maxLength={6}
                 value={pin}
                 disabled={busy || !!token.current}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
               />
               <button
+                aria-label="Approve exact payments"
+                aria-describedby={`batch-amount-${batchId}`}
                 disabled={
                   busy ||
                   !batch.can_authorize ||
@@ -333,7 +329,7 @@ export function PaymentBatchReview({
                   ? "Processing…"
                   : token.current
                     ? "Retry approved payments"
-                    : "Approve exact payments"}
+                    : `Approve ${Object.entries(currencyTotals).map(([currency,total])=>currencyMoney(total,currency)).join(' · ')}`}
               </button>
             </form>
           )}
@@ -369,7 +365,7 @@ export function PaymentBatchReview({
           }
         }}
       >
-        {batch?.status === "REVIEW" ? "Cancel review" : "Close review"}
+        {batch?.status === "REVIEW" ? "Cancel review" : batch && ['SUCCEEDED','PARTIAL','FAILED'].includes(batch.status) ? "Done" : "Close review"}
       </button>
     </section>
   );

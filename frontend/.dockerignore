@@ -3,3 +3,8 @@ dist
 artifacts
 *.log
 *.tsbuildinfo
+.env
+.env.*
+!.env.example
+playwright-report
+test-results

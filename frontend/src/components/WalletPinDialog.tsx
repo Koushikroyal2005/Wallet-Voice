@@ -3,6 +3,7 @@ import { LoaderCircle } from "lucide-react";
 import { money } from "../lib/formatting";
 import { post } from "../lib/api";
 import { Dialog } from "./Dialog";
+import {SecurePinInput,FormError,ConfirmationFooter} from './FormControls';
 
 type Props = {
   action: "TOPUP" | "WITHDRAWAL" | "P2P" | "MANDATE";
@@ -99,13 +100,10 @@ export function WalletPinDialog({
         <label className="pin-label" htmlFor="wallet-pin">
           Your six-digit wallet PIN
         </label>
-        <input
+        <SecurePinInput
           id="wallet-pin"
           className="pin-input"
-          type="password"
-          inputMode="numeric"
           autoComplete="current-password"
-          maxLength={6}
           value={pin}
           disabled={!!approved.current}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
@@ -115,12 +113,8 @@ export function WalletPinDialog({
           Use your AI Wallet PIN. Your bank or PayPal password is never needed
           here.
         </small>
-        {error && (
-          <p className="error-banner" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="dialog-actions">
+        <FormError message={error}/>
+        <ConfirmationFooter>
           <button
             type="button"
             className="secondary"
@@ -137,7 +131,7 @@ export function WalletPinDialog({
                 ? "Retry this operation"
                 : "Approve"}
           </button>
-        </div>
+        </ConfirmationFooter>
       </form>
     </Dialog>
   );

@@ -684,7 +684,7 @@ small {
 .assistant-launcher {
   position: absolute;
   right: 28px;
-  bottom: 24px;
+  bottom: calc(24px + var(--assistant-avoidance, 0px));
   pointer-events: auto;
 }
 .guardian-orb {
@@ -1544,7 +1544,7 @@ small {
   }
   .assistant-launcher {
     right: 18px;
-    bottom: calc(83px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(83px + env(safe-area-inset-bottom, 0px) + var(--assistant-avoidance, 0px));
   }
   .guardian-orb {
     width: 56px;
@@ -1763,7 +1763,7 @@ small {
   }
   .assistant-launcher {
     bottom: calc(
-      83px + env(safe-area-inset-bottom, 0px) + var(--assistant-keyboard, 0px)
+      83px + env(safe-area-inset-bottom, 0px) + var(--assistant-keyboard, 0px) + var(--assistant-avoidance, 0px)
     );
   }
   .assistant-surface {

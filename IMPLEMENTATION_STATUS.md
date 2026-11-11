@@ -1,5 +1,9 @@
 # Implementation status
 
+## Completed repository cleanup — 12 November 2026
+
+[FINAL_COMPLETION.md](docs/FINAL_COMPLETION.md) supersedes the previous pending-code list: offline Unicode/Indic PDFs and tables, guided PIN change, shared secure controls, consolidated Activity, integrated Settings, typed payment reviews and the six-size screenshot correction pass are implemented. Final local backend: **293 passed / 101 skipped**; isolated PostgreSQL: **100 passed**; production build and browser suites passed. External buyer/provider/device verification remains separate, not represented as completed payment evidence.
+
 ## Premium mobile and shared voice experience
 
 The Home-only conversation portal has been replaced by a stable body overlay and a shared assistant controller. Voice has concise contextual cards; chat uses a mobile sheet/desktop panel. Home, Inbox selection, wallet/settings/review materials, keyboard positioning and progressive disclosures have been updated. Saved-recipient voice preparation resolves real stored destinations and reuses existing PIN-bound P2P execution. See [PREMIUM_EXPERIENCE.md](docs/PREMIUM_EXPERIENCE.md) for changed files, visual evidence, measured results and limits. These source changes have not been committed, pushed or deployed; normal Docker must be rebuilt to display them.

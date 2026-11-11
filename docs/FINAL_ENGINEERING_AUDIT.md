@@ -1,5 +1,7 @@
 # Final engineering audit — 12 November 2026
 
+**Superseded pending list:** [FINAL_COMPLETION.md](FINAL_COMPLETION.md) records completion of the repository/UI items previously listed in section 9, including Unicode fonts/tables, guided PIN, common controls, Activity consolidation, integrated Settings, typed reviews and expanded visual verification. This document retains the original audit evidence; its pending-code statements are historical.
+
 ## Owner-requested follow-up and publication
 
 The owner subsequently requested a final cross-check and push to the current branch (`main`). The no-push statements below describe the earlier audit checkpoint. The follow-up corrected two additional issues: Activity now resolves funding source and amount from exact-attempt evidence instead of assuming every reservation-less attempt is PayPal; cancelling Change PIN clears all entered digits and the prior error. A regression explicitly covers unresolved funding evidence. Latest targeted unit run: **39 passed**, 41.20 seconds. TypeScript/Vite production build passed again. Earlier full-suite counts below remain historical, not reruns of the new test. GitHub CI and live-provider checks remain unexecuted. No claim is made that every remaining item in section 9 is complete.

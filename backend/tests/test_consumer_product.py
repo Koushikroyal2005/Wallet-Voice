@@ -6,6 +6,7 @@ from test_http_contracts import client
 from app.models import MoneyRequest,TrackedBill,NotificationReadState,PaymentAttempt,JournalTransaction,PaymentRequest
 from app.services import balances,wallet,emit
 from app.documents import pdf_document
+from test_attempt_documents import pdf_text
 
 def test_money_request_idempotency_and_no_financial_mutation(client,factory):
     body={'payer':'Rahul','amount':12000,'note':'Dinner','request_key':'request-demo-001'}
@@ -69,7 +70,7 @@ def test_preview_cannot_download_success_receipt(client,factory):
     batch=client.post('/api/payment-batches',json={'payment_ids':[ident]}).json()
     doc=client.get(f"/api/product/documents/batches/{batch['id']}.pdf")
     assert doc.status_code==200 and doc.content.startswith(b'%PDF-1.4')
-    assert b'Status: REVIEW' in doc.content and b'Not submitted' in doc.content
+    assert b'Status: REVIEW' in pdf_text(doc.content) and b'Not submitted' in pdf_text(doc.content)
     assert client.get('/api/product/documents/batches/missing.pdf').status_code==404
 
 def test_actual_wallet_receipt_and_statement(client,factory):
@@ -80,8 +81,8 @@ def test_actual_wallet_receipt_and_statement(client,factory):
     assert result.json()['status']=='SUCCEEDED'
     doc=client.get(f'/api/product/documents/payments/{ident}.pdf')
     assert doc.headers['content-type']=='application/pdf'
-    assert b'SIMULATED WALLET' in doc.content and b'Actual recorded status: SUCCEEDED' in doc.content
-    assert result.json()['items'][0]['receipt']['journal_id'].encode() in doc.content
+    assert b'SIMULATED WALLET' in pdf_text(doc.content) and b'Actual recorded status: SUCCEEDED' in pdf_text(doc.content)
+    assert result.json()['items'][0]['receipt']['journal_id'].encode() in pdf_text(doc.content)
     assert client.get('/api/product/batches').json()[0]['id']==batch
 
 def test_source_capabilities_do_not_invent_bank_balances(client):
@@ -92,7 +93,11 @@ def test_source_capabilities_do_not_invent_bank_balances(client):
 
 def test_pdf_multiple_pages_and_escaping():
     data=pdf_document(['(Parentheses) \\ private']*120)
-    assert b'/Count 3' in data and b'\\(Parentheses\\)' in data
+    from io import BytesIO
+    from pypdf import PdfReader
+    reader=PdfReader(BytesIO(data))
+    assert len(reader.pages)>=3
+    assert sum(page.extract_text().count('(Parentheses) \\ private') for page in reader.pages)==120
     start=int(data.split(b'startxref\n')[1].splitlines()[0]);assert data[start:start+4]==b'xref'
 
 def test_assistant_readonly_planning_uses_actual_records(client,factory):

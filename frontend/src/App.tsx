@@ -60,7 +60,7 @@ const tabs = [
   { id: "payments", label: "Inbox", icon: Inbox },
   { id: "activity", label: "Activity", icon: History },
 ] as const;
-const secondaryTabs = [{id:'wallet',label:'Wallet',icon:Wallet},{id:'accounts',label:'Accounts & Cards',icon:Wallet},{id:'bills',label:'Bills & Subscriptions',icon:History},{id:'settings',label:'Settings',icon:UserRound},{id:'permissions',label:'Auto-pay & security',icon:ShieldCheck}] as const;
+const secondaryTabs = [{id:'wallet',label:'Wallet',icon:Wallet},{id:'accounts',label:'Accounts & Cards',icon:Wallet},{id:'bills',label:'Bills & Subscriptions',icon:History},{id:'settings',label:'Settings',icon:UserRound}] as const;
 const openPayment = (p: Payment) =>
   ["PENDING", "HELD", "FAILED"].includes(p.status) &&
   !p.trace?.reason_codes?.includes('EXPIRED') &&
@@ -484,7 +484,7 @@ function WalletApp() {
         {tab==='activity'&&<ActivityScreen onBatch={setExactBatch} onPayment={id=>setReview({id})} onChanged={refresh}/>}
         {tab==='accounts'&&<AccountsScreen/>}
         {tab==='bills'&&<BillsScreen onChanged={refresh}/>}
-        {tab==='settings'&&<SettingsScreen onNavigate={setTab} onChanged={refresh} onLock={()=>void action(async()=>{await post('/api/auth/logout');query.clear();},'Wallet locked')}/>}
+        {(tab==='settings'||tab==='permissions')&&<SettingsScreen onNavigate={setTab} onChanged={refresh} onLock={()=>void action(async()=>{await post('/api/auth/logout');query.clear();},'Wallet locked')}/>}
         {tab === "payments" && (
           <>
             <div className="toolbar">
@@ -543,7 +543,6 @@ function WalletApp() {
             onFund={(action, amount) => setFunding({ action, amount })}
           />
         )}
-        {tab === "permissions" && <Permissions onChanged={refresh} />}
         {tab === "merchant" && <MerchantDemo onChanged={refresh} />}
         {tab === 'home' && <><PlanningInsight onReview={()=>{setSelectedPayments(attention.filter(p=>p.trace?.urgency==='URGENT').map(p=>p.id));setTab('payments');}} onBills={()=>setTab('bills')}/><AttentionQueue onReview={id => { const payment = items.find(p => p.id === id); setReview(payment||{id});setFailure(''); }}/ ></>}
         {tab==='payments'&&<ImportedCheckouts onChanged={refresh}/>}

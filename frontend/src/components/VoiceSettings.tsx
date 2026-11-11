@@ -81,9 +81,9 @@ export function VoiceSettings() {
         Open conversation
       </button>
       <p>
-        Start a new chat in assistant details. This starts a new conversation;
-        it does not delete server history. NVIDIA configuration is not evidence
-        of a successful live model call.
+        New chat starts fresh without deleting earlier server history. To
+        delete the current conversation, use the explicit Delete action in
+        assistant details and wait for confirmation.
       </p>
     </section>
   );
