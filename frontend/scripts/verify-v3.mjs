@@ -17,6 +17,7 @@ try{
   for(const [id,key,description,amount] of [['demo-railway',rail,'train ticket',125000],['demo-food',food,'food order',40000]])await merchant(id,key,'/checkout-requests','POST',{order_reference:'v3-order',amount,currency:'INR',description,expires_at:new Date(Date.now()+12*60000).toISOString()});
   browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:390,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{
+    localStorage.setItem('wallet-review-transcript','off'); // Explicit synthetic test opt-in.
     window.EventSource=class{close(){}};window.__stopped=0;
     Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>({getTracks:()=>[{stop(){window.__stopped++}}]})});
     window.MediaRecorder=class{static isTypeSupported(){return true}state='inactive';mimeType='audio/webm';start(){this.state='recording'}stop(){this.state='inactive';this.ondataavailable?.({data:new Blob(['fixture speech'],{type:'audio/webm'})});queueMicrotask(()=>this.onstop?.())}};
@@ -31,7 +32,7 @@ try{
   await page.getByText('2 urgent requests',{exact:true}).waitFor();
   await attention.locator('article').filter({hasText:'Demo Railway'}).getByRole('button',{name:'Dismiss',exact:true}).click();
   await page.getByText('1 urgent request',{exact:true}).waitFor();
-  await page.locator('.insight-card').getByText('Demo Kitchen',{exact:true}).waitFor();
+  assert.equal(await attention.locator('article').first().getByText('Demo Kitchen',{exact:true}).count(),1,'Next attention comes from the same authoritative list');
   await page.getByRole('navigation').getByRole('button',{name:'Payments',exact:true}).click();
   await page.locator('.payment-list').getByText('Demo Railway',{exact:true}).first().waitFor();
   await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
@@ -39,8 +40,25 @@ try{
   await attention.getByRole('button',{name:'Restore',exact:true}).click();
   await page.getByText('2 urgent requests',{exact:true}).waitFor();
   await page.screenshot({path:join(output,'forgotten-checkout-390.png')});
-  await page.getByRole('button',{name:'Talk to your wallet',exact:true}).click();await page.getByRole('button',{name:'Stop recording',exact:true}).click();
+  await page.getByRole('navigation').getByRole('button',{name:'Payments',exact:true}).click();
+  await page.getByLabel('Select Demo Railway',{exact:true}).check();await page.getByLabel('Select Demo Kitchen',{exact:true}).check();
+  await page.getByRole('button',{name:'Review 2 selected',exact:true}).click();
+  await page.getByRole('dialog').getByRole('region',{name:'Exact payment review'}).getByText('Demo Kitchen',{exact:true}).waitFor();
+  await page.getByRole('dialog').getByRole('button',{name:'Cancel review',exact:true}).click();
+  await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+  await page.getByRole('button',{name:'Talk to your wallet',exact:true}).click();
+  await page.screenshot({path:join(output,'floating-listening-390.png')});
+  await page.getByRole('button',{name:'Stop recording',exact:true}).click();
   const session=page.getByRole('region',{name:'Wallet conversation'});const review=session.getByRole('region',{name:'Exact payment review'});await review.getByText('Demo Kitchen',{exact:true}).waitFor();
+  await page.getByRole('navigation').getByRole('button',{name:'Wallet',exact:true}).click();
+  await review.getByText('Demo Kitchen',{exact:true}).waitFor();
+  await session.getByRole('button',{name:'Chat',exact:true}).click();
+  await review.getByText('Demo Kitchen',{exact:true}).waitFor();
+  await session.getByRole('button',{name:'Close conversation',exact:true}).click();
+  await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+  await page.getByRole('button',{name:'Type instead',exact:true}).click();
+  await review.getByText('Demo Kitchen',{exact:true}).waitFor();
+  assert.equal(await page.locator('#voice-home-session').count(),0,'Assistant is always a body overlay');
   async function say(text){await session.getByLabel('Ask about your wallet or payments').fill(text);await session.getByRole('button',{name:'Send request'}).click();}
   // Backend tests separately prove invalidation of already PIN-approved old snapshots.
   await say('Actually, just the railway');await review.getByText('Demo Kitchen',{exact:true}).waitFor({state:'hidden'});
@@ -63,5 +81,14 @@ try{
   await review.getByLabel('Six-digit wallet PIN').fill('123456');await review.getByRole('button',{name:'Approve exact payments',exact:true}).click();await review.getByRole('heading',{name:'Payments processing',exact:true}).waitFor();assert.equal(await review.getByText('Payment receipt',{exact:true}).count(),0);
   await call('/api/test/reconcile',{});await review.getByRole('heading',{name:'All selected payments completed'}).waitFor();await page.setViewportSize({width:390,height:1000});await review.screenshot({path:join(output,'reconciled-receipt-390.png')});
   const balance=await call('/api/wallet',undefined,'GET');assert.equal(balance.posted_balance,35000);assert.equal(balance.reserved_amount,0);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
-  console.log('PASSED: V3 A/B/C: remembered checkout with alerts off; explicit synthetic voice auto-submit; corrections and re-add; inline desktop/mobile review; exact PIN and two journals; separate fulfillment; real shortfall, PIN funding, fresh review; unknown outcome stays processing until actual worker reconciliation. No live providers or physical microphone.');
+  await call('/api/recipients',{name:'Rahul',handle:'+919876543210',handle_type:'PHONE'});
+  await say('Send 100 to Rahul');const recipient=session.getByRole('region',{name:'Recipient transfer review'});
+  await recipient.getByText('+919876543210',{exact:true}).waitFor();
+  await recipient.getByRole('button',{name:'Review transfer',exact:true}).click();
+  await page.getByRole('dialog').getByLabel('Your six-digit wallet PIN').fill('123456');
+  await page.getByRole('dialog').getByRole('button',{name:'Approve',exact:true}).click();
+  await session.getByRole('region',{name:'Payment Guardian'}).getByRole('heading',{name:'Payment completed',exact:true}).waitFor();
+  const finalBalance=await call('/api/wallet',undefined,'GET');assert.equal(finalBalance.posted_balance,25000);assert.equal(finalBalance.reserved_amount,0);
+  await session.screenshot({path:join(output,'recipient-transfer-receipt-390.png'),animations:'disabled'});
+  console.log('PASSED: V3 A/B/C plus saved-recipient transfer: remembered checkouts and alerts-off memory; Inbox exact selection; voice/chat/navigation continuity; corrections and re-add; exact PIN and journals; separate fulfillment; shortfall, PIN funding and fresh review; uncertainty reconciliation; Rahul resolved from actual saved details and paid through existing PIN-bound P2P route. Synthetic STT only; no live providers or physical microphone.');
 }finally{await browser?.close();web.kill();backend.kill();}

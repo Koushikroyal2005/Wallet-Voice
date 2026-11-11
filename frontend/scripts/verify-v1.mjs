@@ -23,6 +23,7 @@ try {
     const page=await browser.newPage({viewport:{width,height:1000}});const errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
+      localStorage.setItem('wallet-review-transcript','off'); // Explicit synthetic test opt-in.
       window.EventSource=class{close(){}};
       window.__tracksStopped=0;
       Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>({getTracks:()=>[{stop(){window.__tracksStopped++;}}]})});

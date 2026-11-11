@@ -49,7 +49,7 @@ try {
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(result)});
     });
     await page.goto('http://127.0.0.1:5190');
-    await page.getByRole('button',{name:'Review payment',exact:true}).click();
+    await page.getByRole('region',{name:'Payment reminders'}).getByRole('button',{name:'Review now',exact:true}).first().click();
     await page.getByLabel('Payment source',{exact:true}).selectOption('PAYPAL_SANDBOX');
     if(outcome.startsWith('RELOAD')) {
       if(outcome==='RELOAD_PENDING')await page.getByText('Failed or denied',{exact:true}).waitFor();

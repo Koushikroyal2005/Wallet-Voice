@@ -46,7 +46,9 @@ def resolve(db,args,listed=()):
 
 def interpret(text,context):
     value=text.lower().replace('’',"'").strip().rstrip('.!?')
+    value=re.sub(r'^(okay|ok),\s*',r'\1 ',value)
     previous=context.get('batch_id')
+    if previous and value in {'how much money will i have left','how much money will i have left after this','okay pay it','ok pay it','pay it','yes pay it'}:return {'existing':previous}
     if previous and 'paypal' in value:return {'unsupported_source':True}
     if previous and value in {'how much will i have left if i pay these','how much will i have left','use my wallet','use wallet','use wallet instead','use my wallet instead'}:return {'existing':previous}
     if previous and value in {'how much will remain','how much will remain after these','how much will remain after these payments'}:return {'existing':previous}

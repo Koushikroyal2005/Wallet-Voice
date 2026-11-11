@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { guardianFixture } from './guardian-fixture.mjs';
 
-const output = resolve('..', 'artifacts', 'product-review');
+const output = resolve('..', 'artifacts', 'premium-review');
 await mkdir(output, { recursive: true });
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5189', '--strictPort'], { stdio: 'ignore', windowsHide: true });
 const base = process.env.UI_TEST_URL || 'http://127.0.0.1:5189';
@@ -66,24 +66,44 @@ try {
   await page.goto(base, { waitUntil: 'networkidle' });
   await page.getByRole('heading',{name:'Welcome to your wallet.'}).waitFor();
   await page.screenshot({path:resolve(output,'unlock-desktop.png'),fullPage:true});
+  for(const [width,height] of [[390,844],[430,932],[768,1024],[1440,900]]){
+    await page.setViewportSize({width,height});await page.screenshot({path:resolve(output,`unlock-${width}.png`),animations:'disabled'});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Unlock: no horizontal overflow');
+  }
   await page.getByLabel('Wallet PIN',{exact:true}).fill('123456');
   await page.getByRole('button',{name:'Unlock wallet'}).click();
-  await page.getByRole('heading', { name: 'Talk to your wallet.' }).waitFor();
+  await page.getByRole('heading', { name: 'Your wallet.',exact:true }).waitFor();
   async function screen(name) {
     if(!name.startsWith('guardian-'))await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: false, animations:'disabled' });
     if(!name.startsWith('guardian-'))await page.screenshot({ path: resolve(output, `${name}-full.png`), fullPage: true, animations:'disabled' });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
   }
-  for (const [width,height] of [[1440,1000],[1024,900],[768,1024],[390,844]]) {
+  for (const [width,height] of [[1440,900],[1024,900],[768,1024],[430,932],[390,844]]) {
     await page.setViewportSize({width,height});
     for (const name of ['Home','Payments','Wallet','Auto-pay & security']) {
       await page.getByRole('navigation').getByRole('button',{name,exact:true}).click();
       await page.waitForTimeout(100);
       await screen(`${name.toLowerCase()}-${width}`);
+      if(name==='Auto-pay & security'){
+        await page.getByRole('button',{name:'Security',exact:true}).click();
+        await page.getByRole('button',{name:'Change PIN',exact:true}).waitFor();await screen(`security-${width}`);
+        await page.getByRole('button',{name:'Auto-pay',exact:true}).click();
+      }
     }
     await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
-    await page.getByRole('button',{name:'Review payment',exact:true}).click();
+    await page.getByRole('button',{name:'Send',exact:true}).click();
+    await page.getByLabel('Recipient',{exact:true}).waitFor();
+    await screen(`send-money-${width}`);await page.keyboard.press('Escape');
+    await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+    await page.getByRole('button',{name:'Add money',exact:true}).click();
+    await page.getByLabel('Amount in rupees').waitFor();
+    await page.getByLabel('Amount in rupees').fill('100');
+    await page.getByRole('button',{name:/Review ₹100/}).click();
+    await page.getByLabel('Your six-digit wallet PIN').waitFor();
+    await screen(`wallet-pin-${width}`);await page.keyboard.press('Escape');
+    await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+    await page.getByRole('region',{name:'Payment reminders'}).getByRole('button',{name:'Review now',exact:true}).first().click();
     await page.getByRole('region',{name:'Payment Guardian'}).getByText('Indian Railways',{exact:true}).waitFor();
     await page.getByRole('dialog').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
     await screen(`guardian-${width}`);
@@ -146,17 +166,19 @@ try {
   await page.keyboard.press('Escape');
   const orb = page.getByRole('button', {name: 'Open wallet assistant',exact:true});
   await orb.click();
-  await page.getByRole('heading',{name:'Your wallet assistant',exact:true}).waitFor();
+  await page.getByRole('region',{name:'Wallet conversation'}).waitFor();
+  assert.equal(await page.locator('#voice-home-session').count(),0,'Assistant never enters Home layout');
   await page.keyboard.press('Escape');
   assert.ok(await orb.evaluate(el=>el===document.activeElement),'Closing assistant restores launcher focus');
-  await page.getByRole('button',{name:'Talk',exact:true}).click();
-  await page.getByRole('heading',{name:'Let’s talk',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Talk to your wallet',exact:true}).click();
+  await page.getByRole('region',{name:'Wallet conversation'}).waitFor();
   await page.getByText('Microphone permission was not granted. Type your request instead.').waitFor();
   await screen('assistant-voice');
   await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'Type',exact:true}).focus();
+  await page.getByRole('button',{name:'Type instead',exact:true}).focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('heading',{name:'Your wallet assistant',exact:true}).waitFor();
+  await page.getByRole('region',{name:'Wallet conversation'}).waitFor();
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({status:'passed',screenshots:output,viewports:4,screens:5,journeys:['funding/activity refresh','recipient draft','permission review','stale assistant preview cleared','single tap assistant','explicit Talk/Type','keyboard launcher']},null,2));
-} finally { await browser.close(); server.kill(); }
+  console.log(JSON.stringify({status:'passed',screenshots:output,viewports:5,screens:5,journeys:['funding/activity refresh','recipient draft','permission review','stale assistant preview cleared','single tap assistant without Home portal','explicit Talk/Type','keyboard launcher']},null,2));
+} catch(error) {await page.screenshot({path:resolve(output,'failure.png'),fullPage:true});console.error(await page.locator('body').innerText());throw error;}
+finally { await browser.close(); server.kill(); }

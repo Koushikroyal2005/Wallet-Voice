@@ -64,12 +64,14 @@ try {
       assert.equal(await panel.getByRole('heading',{name:'Payment completed',exact:true}).count(),0);
     }else if(scenario.startsWith('paypal')){
       await panel.getByRole('heading',{name:scenario==='paypal-pending'?'Waiting for confirmation':'Payment completed',exact:true}).waitFor();
+      await panel.getByText('Payment checks and timeline',{exact:true}).click();
       await panel.getByText(/Internal wallet limits do not govern/).waitFor();
       assert.equal(await panel.getByRole('button',{name:'Confirm action',exact:true}).count(),0);
     }else assert.ok(await panel.getByRole('button',{name:'Confirm action',exact:true}).isDisabled());
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal page overflow');
     if(!['wallet','failed'].includes(scenario)){
       assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'No panel overflow');
+      if(!await panel.getByLabel('Payment decision timeline').isVisible())await panel.getByText('Payment checks and timeline',{exact:true}).click();
       await panel.getByLabel('Payment decision timeline').waitFor();
     }
     assert.deepEqual(errors,[]);await page.close();

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownLeft,
@@ -36,6 +36,7 @@ export function WalletView({
   });
   const [transfer, setTransfer] = useState<"TOPUP" | "WITHDRAWAL">();
   const [amount, setAmount] = useState("");
+  useEffect(()=>{const add=()=>{setAmount('');setTransfer('TOPUP');};window.addEventListener('wallet-add-money',add);return()=>window.removeEventListener('wallet-add-money',add);},[]);
   return (
     <>
       <section className="wallet-summary surface">
@@ -73,9 +74,9 @@ export function WalletView({
         <section className="surface"><span className="eyebrow">RESERVED FOR PAYMENTS</span><strong>{balance ? money(balance.reserved_amount) : '—'}</strong><p>Set aside while payments finish.</p></section>
       </div>
       <section className="surface payment-method-card">
-        <p>Maximum simulated posted wallet balance: ₹1,00,000. Existing ledger history is preserved.</p>
+        <p>You can keep up to ₹1,00,000 in this simulated wallet.</p>
         <button className="secondary" disabled={(balance?.posted_balance || 0) + 50000 > 10000000} onClick={() => onFund('TOPUP',50000)}>Receive ₹500 demo bank transfer</button>
-        <p>This example is a simulated incoming bank top-up recorded in your wallet journal. Your PIN is required.</p>
+        <p>Try a ₹500 simulated top-up. You’ll review it and enter your wallet PIN.</p>
         <span className="eyebrow">PAYMENT METHODS</span>
         <h3>PayPal at checkout</h3>
         <p>Choose PayPal when reviewing a payment. Your personal account is selected during PayPal checkout.</p>
@@ -84,7 +85,7 @@ export function WalletView({
       <div className="section-heading">
         <div>
           <h2>Recent activity</h2>
-          <p>Recorded wallet movements. Payment settlement does not confirm merchant booking or delivery; check the request for fulfillment.</p>
+          <p>Your wallet activity. For tickets or deliveries, check confirmation with the business.</p>
         </div>
         <span className="badge">Demo wallet · no real bank transfers</span>
       </div>
@@ -189,7 +190,7 @@ export function WalletView({
   );
 }
 
-export function Drafts({ onChanged }: { onChanged: () => void }) {
+export function Drafts({ onChanged,requested=false,onRequestHandled }: { onChanged: () => void;requested?:boolean;onRequestHandled?:()=>void }) {
   const drafts = useQuery({
     queryKey: ["drafts"],
     queryFn: () => api<any[]>("/api/payment-intents"),
@@ -209,6 +210,7 @@ export function Drafts({ onChanged }: { onChanged: () => void }) {
   const [selected, setSelected] = useState<any>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(()=>{if(requested){setCreating(true);setError('');onRequestHandled?.();}},[requested]);
   const recipient = (id: string) =>
     recipients.data?.find((item) => item.id === id);
   async function run(action: () => Promise<void>) {
@@ -321,6 +323,7 @@ export function Drafts({ onChanged }: { onChanged: () => void }) {
             <label className="field">
               Recipient
               <select
+                aria-label="Recipient"
                 value={form.recipient_id}
                 onChange={(e) =>
                   setForm({ ...form, recipient_id: e.target.value })
@@ -530,7 +533,7 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
         <button aria-pressed={section === "security"} onClick={() => setSection("security")}>Security</button>
       </div>
       {section === "autopay" && <>
-      <div className="permission-intro surface"><ShieldCheck size={24}/><div><strong>You choose who can be paid automatically.</strong><p>The general switch only enables existing permissions. Each authenticated merchant needs its own PIN-approved amount, daily limit and expiry. You can revoke permission at any time.</p></div><span className="badge">Simulated wallet only</span></div>
+      <div className="permission-intro surface"><ShieldCheck size={24}/><div><strong>You choose who can be paid automatically.</strong><p>Only businesses you approve can be paid. Choose a limit and an end date, then confirm with your PIN. You can switch a permission off at any time.</p></div><span className="badge">Simulated wallet only</span></div>
       <div className="section-heading">
         <div>
           <h2>Faster checkout</h2>

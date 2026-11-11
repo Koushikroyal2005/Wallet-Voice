@@ -23,6 +23,7 @@ def contextual_intent(text, conversation):
 
 def _resolve_context(text, conversation):
     value=text.strip().lower().rstrip('.!?')
+    value=re.sub(r'^(okay|ok),\s*',r'\1 ',value)
     preview=(conversation.context or {}).get('preview') or {}
     listed=(conversation.context or {}).get('listed_payment_ids') or []
     awaiting=(conversation.context or {}).get('awaiting_amount')
@@ -34,6 +35,8 @@ def _resolve_context(text, conversation):
         return Intent('',{},'Please give one positive rupee amount with at most two decimal places.')
     if re.search(r'\b(?:bypass|ignore|skip)\b.{0,30}\b(?:approval|confirmation|pin|rules)\b',value):
         return Intent('',{},'Financial actions always require your approval in the secure review.')
+    if preview.get('kind')=='recipient_transfer' and value in {'pay it','okay pay it','ok pay it','send it','yes send it'}:
+        return Intent('review_recipient_draft',{'payment_id':preview.get('intent_id')})
     if value in {'stop','stop talking','no','not that one','actually not that one'}:
         conversation.selected_payment_id=None
         conversation.context={}

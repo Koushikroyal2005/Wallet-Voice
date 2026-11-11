@@ -62,6 +62,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
   if (exactBatch) return <PaymentBatchReview batchId={exactBatch} onChanged={onChanged} onCancel={onCancel}/>;
   if (!review?.payment) return <section className="payment-guardian" aria-label="Payment Guardian"><h3>Payment Guardian</h3><p role="status">{error || 'Checking payment details…'}</p><button className="secondary" onClick={onCancel}>Cancel review</button></section>;
   const p = review.payment;
+  const recipientTransfer=p.category==='person_to_person';
   const locked = !!review.attempt && ['PROCESSING', 'SUCCEEDED'].includes(review.attempt.status) || !!review.paypal;
   const actualSource = locked ? review.paypal || review.receipt?.funding_source === 'PAYPAL_SANDBOX' ? 'PAYPAL_SANDBOX' : 'AI_WALLET' : source;
   const paypal = actualSource === 'PAYPAL_SANDBOX';
@@ -80,13 +81,14 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     <span className="eyebrow">PAYMENT GUARDIAN</span><h3 tabIndex={-1}>{title}</h3>
     <p role="status" aria-live="polite">{done ? paypal ? 'PayPal capture confirmed by the backend.' : 'Demo wallet payment recorded in the journal.' : processing ? 'The result is pending. Keep this request open; do not start another payment.' : 'Check the details. Your assistant has prepared this review for you.'}</p>
     <dl className="guardian-details">
-      <div><dt>Merchant</dt><dd>{p.merchant}</dd></div><div><dt>Amount</dt><dd>{amount(p.amount, p.currency)} · {p.currency}</dd></div>
+      <div><dt>{recipientTransfer?'Recipient':'Merchant'}</dt><dd>{p.merchant}</dd></div><div><dt>Amount</dt><dd>{amount(p.amount, p.currency)} · {p.currency}</dd></div>
       <div><dt>Deadline</dt><dd>{p.expires_at ? new Date(p.expires_at).toLocaleString() : 'No deadline supplied'}</dd></div>
-      <div><dt>Verification</dt><dd>{p.verified ? 'Marked verified in this app’s merchant record' : 'Unrecognized business — check independently'}{p.provider?.includes('DEMO') ? ' · Demo merchant' : ''}</dd></div>
+      <div><dt>Verification</dt><dd>{recipientTransfer ? p.verified?'Recipient verification reported by the backend':'Saved contact · account ownership is not verified' : p.verified ? 'Marked verified in this app’s merchant record' : 'Unrecognized business — check independently'}{!recipientTransfer&&p.provider?.includes('DEMO') ? ' · Demo merchant' : ''}</dd></div>
     </dl>
     {!identityValid && <p role="alert">Merchant identity is no longer valid. Recognition or a PIN cannot override this block. Completed receipts remain historical records.</p>}
     {review.merchant_order && <div className="guardian-rules"><strong>Simulated merchant order · {review.merchant_order.merchant_order_reference}</strong><p>Payment: {paymentStatus(review.merchant_order.payment_status)}. {review.merchant_order.fulfilled_at ? 'Merchant marked this order fulfilled.' : 'Fulfillment has not been confirmed by the merchant. A payment receipt does not confirm a booking or delivery.'}</p></div>}
     <label>Payment source<select aria-label="Payment source" value={actualSource} disabled={busy || locked || expired || held} onChange={e => { setSource(e.target.value); setRecognized(false); setError(''); }}><option value="AI_WALLET">Demo wallet</option>{p.category !== 'person_to_person' && <option value="PAYPAL_SANDBOX">PayPal Sandbox</option>}</select></label>
+    <details className="guardian-expanded"><summary>Payment checks and timeline</summary>
     <div className="guardian-rules"><strong>{paypal ? 'PayPal approval' : 'Why this wallet decision?'}</strong>
       {paypal ? <p>PayPal handles buyer approval and capture. Internal wallet limits do not govern these external funds. Your demo wallet is not debited or reserved.</p> : <>
         <p>{decision.decision === 'ELIGIBLE' ? 'The server allows this payment within your current balance and spending rules. Your approval is still required.' : (decision.reason_codes || []).map((r: string) => reasons[r] || r.replaceAll('_', ' ').toLowerCase()).join(' ')}</p>
@@ -99,6 +101,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     <ol className="guardian-timeline" aria-label="Payment decision timeline">
       {['Request identified', 'Details checked', 'User approval required', 'Processing', paypal ? 'Provider-confirmed outcome' : 'Demo journal outcome'].map((step, i) => <li key={step} data-complete={i < 2 || i === 2 && approved || i > 2 && done}><span>{i + 1}</span>{step}{i === 3 && processing ? ' — pending' : ''}{i === 4 && failed ? ` — ${status}` : ''}</li>)}
     </ol>
+    </details>
     {!p.verified && !locked && !expired && !held && <label className="check-label"><input type="checkbox" checked={recognized} onChange={e => setRecognized(e.target.checked)}/> I recognize this business and have checked the amount.</label>}
     {review.attempt?.failure_reason && <p role="alert">{review.attempt.failure_reason}</p>}
     {error && <p role="alert">{error}</p>}

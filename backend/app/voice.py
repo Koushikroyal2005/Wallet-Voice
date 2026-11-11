@@ -24,6 +24,7 @@ TOOLS=[{"type":"function","function":{"name":n,"description":d,"parameters":p}} 
 READ_ONLY={"get_wallet_balance","get_wallet_transactions","list_payment_requests","list_payment_drafts","get_urgent_payment_requests","get_autopay_settings","evaluate_batch_payments"}
 TOOLS.extend([{'type':'function','function':{'name':name,'description':description,'parameters':{'type':'object','properties':{'payment_id':{'type':'string'}},'required':['payment_id'],'additionalProperties':False}}} for name,description in [('get_payment_details','Explain the backend state and urgency of a known payment ID without preparing or executing payment.'),('prepare_hold','Prepare a hold for explicit UI confirmation; never schedule or pay automatically.')]])
 READ_ONLY.add('get_payment_details')
+TOOLS.append({'type':'function','function':{'name':'prepare_recipient_transfer','description':'Prepare a simulated transfer draft for an existing saved recipient by exact name or handle. Never execute a transfer.','parameters':_DRAFT_ARGS}})
 TOOLS.append({'type':'function','function':{'name':'prepare_payment_batch','description':'Prepare multiple existing requests by user-supplied merchant phrases, with explicit exclusions. Never supplies IDs, amounts or authorization.','parameters':{'type':'object','properties':{'include':{'type':'array','items':{'type':'string'}},'exclude':{'type':'array','items':{'type':'string'}}},'required':['include'],'additionalProperties':False}}})
 SYSTEM_PROMPT += ' For several payments use prepare_payment_batch with the exact merchant phrases included and excluded by the user. Never add a merchant. A batch uses the simulated internal wallet and still needs a secure PIN.'
 class VoiceError(ValueError):pass
@@ -35,6 +36,11 @@ def demo_intent(text:str)->Intent:
     if re.search(r'[$€£]|\b(?:usd|dollars?|eur|euros?|gbp|pounds?)\b',t):return Intent('',{},'Please specify wallet amounts in INR rupees. No currency conversion was assumed.')
     if re.search(r'-\s*\d|\d+\.\d{3,}|\d.*\b(?:or|and)\b.*\d',t):return Intent('',{},'Please give one positive rupee amount with at most two decimal places.')
     if re.search(r'\b(?:bypass|ignore|skip)\b.{0,30}\b(?:approval|confirmation|pin|rules)\b',t):return Intent('',{},'Financial actions always require your approval in the secure review.')
+    if re.match(r'^\s*(?:please\s+)?send\b',t):
+        recipient=re.search(r'\bto\s+(.+?)[.!?]?$',text,re.I)
+        if not value:return Intent('',{},'How much would you like to send in rupees?')
+        if not recipient:return Intent('',{},'Which saved recipient should I prepare this for?')
+        return Intent('prepare_recipient_transfer',{'amount':value,'merchant':recipient.group(1).strip()})
     if "balance" in t or "available" in t:return Intent("get_wallet_balance",{})
     if 'transactions' in t or 'recent activity' in t:return Intent('get_wallet_transactions',{})
     if "pending" in t or 'payments are waiting' in t:return Intent("list_payment_requests",{})
@@ -100,7 +106,9 @@ async def nemotron_intent(text:str,history:list[dict])->Intent:
         if not args:return Intent('',{},'Which AutoPay setting do you want to change? Review changes in the settings screen.','nvidia-nemotron')
     if name=='prepare_manual_payment' and args.get('payment_source')=='PAYPAL_SANDBOX' and 'paypal' not in value:
         raise VoiceError('The model selected a payment source you did not request. Please choose your payment method explicitly.')
-    if name in {'prepare_topup','prepare_withdrawal','create_payment_draft'}:
+    if name=='prepare_recipient_transfer' and (args.get('merchant') or '').casefold() not in text.casefold():
+        raise VoiceError('The proposed recipient did not match your words. Use the exact saved name or handle.')
+    if name in {'prepare_topup','prepare_withdrawal','create_payment_draft','prepare_recipient_transfer'}:
         quoted=re.findall(r'(?<![\w.])\d[\d,]*(?:\.\d{1,2})?(?![\d.])',value)
         if len(quoted)==1 and args.get('amount')!=int(Decimal(quoted[0].replace(',',''))*100):
             raise VoiceError('The model amount did not match your request. Please state the amount in rupees again.')
@@ -120,6 +128,9 @@ def validate_tool_arguments(name, raw):
         return raw
     return ToolArgs.model_validate(raw,strict=True).model_dump(exclude_none=True)
 def execute_tool(db:Session,intent:Intent):
+    if intent.tool in {'prepare_recipient_transfer','review_recipient_draft'}:
+        from .recipient_voice import prepare_transfer
+        return prepare_transfer(db,intent)
     if 'amount' in intent.args and (type(intent.args['amount']) is not int or not 0<intent.args['amount']<=10_000_000):
         raise VoiceError('Please provide one positive INR amount within the supported range.')
     w=wallet(db);b=balances(db,w)

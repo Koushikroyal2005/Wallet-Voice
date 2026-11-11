@@ -1,5 +1,11 @@
 # Implementation status
 
+## Premium mobile and shared voice experience
+
+The Home-only conversation portal has been replaced by a stable body overlay and a shared assistant controller. Voice has concise contextual cards; chat uses a mobile sheet/desktop panel. Home, Inbox selection, wallet/settings/review materials, keyboard positioning and progressive disclosures have been updated. Saved-recipient voice preparation resolves real stored destinations and reuses existing PIN-bound P2P execution. See [PREMIUM_EXPERIENCE.md](docs/PREMIUM_EXPERIENCE.md) for changed files, visual evidence, measured results and limits. These source changes have not been committed, pushed or deployed; normal Docker must be rebuilt to display them.
+
+Observed: **100 affected backend tests passed**, **62 isolated PostgreSQL tests passed**, production build and compilation passed. Product checks cover five sizes including 390/430/768/1440; the new assistant suite covers all four requested dimensions. Existing Voice (9), Guardian (9), PayPal fixture (7), V1/V2 and expanded V3 browser journeys passed. V3 includes actual saved-recipient P2P PIN execution alongside exact merchant batches, journal receipts and uncertainty reconciliation. Screenshots were opened and a visual correction pass completed. Hardware microphone, physical devices, live NVIDIA and actual Sandbox buyer/webhook checks remain unexecuted.
+
 ## Final V1–V3 quality pass — 11 November 2026
 
 CI module invocation, coalesced deadline alerts, durable explicit snooze and current merchant-identity validation are implemented. Home uses shared backend attention data; dismissal is not cancellation. Revoked identities cannot start new internal dispatch or external capture, while reconciliation preserves confirmed provider evidence and historical receipts. No ledger rewrite, private credential edit, commit or push. See [FINAL_REVIEW.md](docs/FINAL_REVIEW.md) for the final measured matrix, file explanations, limitations and release gate; earlier dated results below are historical, not this pass's results.

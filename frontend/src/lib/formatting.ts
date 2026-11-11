@@ -2,6 +2,11 @@ export const money = (paise = 0) => new Intl.NumberFormat('en-IN', {
   style: 'currency', currency: 'INR', minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2,
 }).format(paise / 100);
 
+export const currencyMoney = (minor = 0, currency = 'INR') => {
+  try { return new Intl.NumberFormat('en-IN',{style:'currency',currency,minimumFractionDigits:minor%100?2:0,maximumFractionDigits:2}).format(minor/100); }
+  catch { return `${(minor/100).toFixed(2)} ${currency}`; }
+};
+
 const labels: Record<string, string> = {
   PENDING: 'Pending', HELD: 'On hold', PROCESSING: 'Processing',
   SUCCEEDED: 'Paid', FAILED: 'Failed', EXPIRED: 'Expired',
