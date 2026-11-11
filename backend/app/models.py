@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -149,3 +149,97 @@ class PushSubscription(Base):
     endpoint: Mapped[str]=mapped_column(String,unique=True)
     subscription: Mapped[dict]=mapped_column(JSON)
     active: Mapped[bool]=mapped_column(Boolean,default=True)
+
+class NotificationReadState(Base):
+    __tablename__='notification_read_states'
+    __table_args__=(UniqueConstraint('user_id','notification_id'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    notification_id: Mapped[str]=mapped_column(String(180))
+    read: Mapped[bool]=mapped_column(Boolean,default=False)
+    dismissed: Mapped[bool]=mapped_column(Boolean,default=False)
+
+class MoneyRequest(Base):
+    """A request to receive money, never an instruction to debit a wallet."""
+    __tablename__='money_requests'
+    __table_args__=(UniqueConstraint('user_id','request_key'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    request_key: Mapped[str]=mapped_column(String(80))
+    payer: Mapped[str]=mapped_column(String(120))
+    amount: Mapped[int]=mapped_column(Integer)
+    currency: Mapped[str]=mapped_column(String(3),default='INR')
+    note: Mapped[str]=mapped_column(String(500),default='')
+    status: Mapped[str]=mapped_column(String,default='REQUESTED')
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class TrackedBill(Base):
+    """Manually tracked expected expense, not a live biller connection."""
+    __tablename__='tracked_bills'
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    merchant: Mapped[str]=mapped_column(String(120))
+    amount: Mapped[int]=mapped_column(Integer)
+    currency: Mapped[str]=mapped_column(String(3),default='INR')
+    due_at: Mapped[datetime]=mapped_column(DateTime(timezone=True))
+    recurring: Mapped[bool]=mapped_column(Boolean,default=False)
+    cadence: Mapped[str]=mapped_column(String,default='MONTHLY')
+    remind_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    active: Mapped[bool]=mapped_column(Boolean,default=True)
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class PaymentIntakeRecord(Base):
+    __tablename__='payment_intakes'
+    __table_args__=(UniqueConstraint('user_id','dedupe_key'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    source_type: Mapped[str]=mapped_column(String)
+    source_url: Mapped[str|None]=mapped_column(String(2048),nullable=True)
+    merchant: Mapped[str]=mapped_column(String(120))
+    description: Mapped[str]=mapped_column(String(500),default='')
+    amount: Mapped[int]=mapped_column(Integer)
+    currency: Mapped[str]=mapped_column(String(3),default='INR')
+    deadline: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    remind_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    dedupe_key: Mapped[str]=mapped_column(String(64))
+    status: Mapped[str]=mapped_column(String,default='SAVED')
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class SplitGroup(Base):
+    __tablename__='split_groups'
+    __table_args__=(UniqueConstraint('user_id','request_key'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    request_key: Mapped[str]=mapped_column(String(80))
+    snapshot_hash: Mapped[str]=mapped_column(String(64))
+    amount: Mapped[int]=mapped_column(Integer)
+    note: Mapped[str]=mapped_column(String(500),default='')
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class SplitParticipant(Base):
+    __tablename__='split_participants'
+    __table_args__=(UniqueConstraint('group_id','position'),)
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    group_id: Mapped[str]=mapped_column(ForeignKey('split_groups.id'),index=True)
+    position: Mapped[int]=mapped_column(Integer)
+    name: Mapped[str]=mapped_column(String(120))
+    amount: Mapped[int]=mapped_column(Integer)
+    request_id: Mapped[str|None]=mapped_column(ForeignKey('money_requests.id'),nullable=True)
+
+class DocumentRecord(Base):
+    __tablename__='document_records'
+    id: Mapped[str]=mapped_column(String,primary_key=True,default=uid)
+    user_id: Mapped[str]=mapped_column(String,default='demo-user',index=True)
+    payment_request_id: Mapped[str|None]=mapped_column(ForeignKey('payment_requests.id'),nullable=True)
+    title: Mapped[str]=mapped_column(String(120))
+    content: Mapped[bytes]=mapped_column(LargeBinary)
+    digest: Mapped[str]=mapped_column(String(64))
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class ProductPreferences(Base):
+    __tablename__='product_preferences'
+    user_id: Mapped[str]=mapped_column(String,primary_key=True,default='demo-user')
+    payment_alerts: Mapped[bool]=mapped_column(Boolean,default=True)
+    ai_alerts: Mapped[bool]=mapped_column(Boolean,default=True)
+    planning_alerts: Mapped[bool]=mapped_column(Boolean,default=True)
+    lock_screen_private: Mapped[bool]=mapped_column(Boolean,default=True)

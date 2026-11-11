@@ -9,6 +9,7 @@ type Preview = {
   count?: number;
   changes?: Record<string, unknown>;
   payment_id?: string;
+  resource_id?: string;
   merchant?: string;
   deadline?: string | null;
   payment_source?: string;
@@ -85,7 +86,7 @@ export function useWalletAssistant({
   const [reviewTranscript, setReviewTranscript] = useState(
     () => localStorage.getItem("wallet-review-transcript") !== "off",
   );
-  const [readReplies, setReadReplies] = useState(false);
+  const [readReplies, setReadReplies] = useState(()=>localStorage.getItem('wallet-read-replies')==='on');
   const readRepliesRef = useRef(readReplies);
   readRepliesRef.current = readReplies;
   const [browserSpeechAllowed, setBrowserSpeechAllowed] = useState(false);
@@ -532,6 +533,17 @@ export function useWalletAssistant({
         : "COMPLETED",
     );
   };
+  useEffect(()=>{
+    const update=()=>{
+      setReviewTranscript(localStorage.getItem('wallet-review-transcript')!=='off');
+      const read=localStorage.getItem('wallet-read-replies')==='on';
+      setReadReplies(read);
+      setPatientListening(localStorage.getItem('wallet-patient-listening')==='true');
+      if(!read)stopVoice();
+    };
+    window.addEventListener('wallet-voice-preferences-changed',update);
+    return()=>window.removeEventListener('wallet-voice-preferences-changed',update);
+  },[]);
   useEffect(() => {
     requestGeneration.current++;
     turnRequest.current?.abort();

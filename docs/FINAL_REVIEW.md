@@ -1,5 +1,7 @@
 # Final V1–V3 review — 11 November 2026
 
+Latest consumer redesign evidence and remaining scope: [CONSUMER_PRODUCT.md](CONSUMER_PRODUCT.md). The V1–V3 results below remain historical, not a claim that newer optional integrations were executed.
+
 Baseline: `a83a59d103f3a9a80862350026a3896e38102138`. Changes are local, not committed or pushed. This is a focused prototype quality pass, not security certification or production banking readiness.
 
 **Verdict: READY WITH LIMITATIONS for the explicitly labelled local, simulated hackathon journey.** Not approved as a real-money production wallet, and not evidence of live NVIDIA, OS push or PayPal buyer success.

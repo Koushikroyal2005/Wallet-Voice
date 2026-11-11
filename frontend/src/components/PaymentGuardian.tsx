@@ -26,6 +26,8 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [exactBatch, setExactBatch] = useState<string>();
+  const [capabilities,setCapabilities]=useState<{paypal?:{can_prepare:boolean;reasons:string[]}}>();
+  useEffect(()=>{let closed=false;void api(`/api/product/sources/${paymentId}/eligibility`).then(result=>{if(!closed)setCapabilities(result);}).catch(()=>{});return()=>{closed=true;};},[paymentId]);
   const active = useRef(false);
   const load = async () => {
     const result = await api(`/api/payments/${paymentId}/review`);
@@ -87,7 +89,8 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     </dl>
     {!identityValid && <p role="alert">Merchant identity is no longer valid. Recognition or a PIN cannot override this block. Completed receipts remain historical records.</p>}
     {review.merchant_order && <div className="guardian-rules"><strong>Simulated merchant order · {review.merchant_order.merchant_order_reference}</strong><p>Payment: {paymentStatus(review.merchant_order.payment_status)}. {review.merchant_order.fulfilled_at ? 'Merchant marked this order fulfilled.' : 'Fulfillment has not been confirmed by the merchant. A payment receipt does not confirm a booking or delivery.'}</p></div>}
-    <label>Payment source<select aria-label="Payment source" value={actualSource} disabled={busy || locked || expired || held} onChange={e => { setSource(e.target.value); setRecognized(false); setError(''); }}><option value="AI_WALLET">Demo wallet</option>{p.category !== 'person_to_person' && <option value="PAYPAL_SANDBOX">PayPal Sandbox</option>}</select></label>
+    <label>Payment source<select aria-label="Payment source" value={actualSource} disabled={busy || locked || expired || held} onChange={e => { setSource(e.target.value); setRecognized(false); setError(''); }}><option value="AI_WALLET">Demo wallet</option>{p.category !== 'person_to_person' && <option value="PAYPAL_SANDBOX" disabled={capabilities?.paypal?.can_prepare===false}>PayPal Sandbox{capabilities?.paypal?.can_prepare===false?' — unavailable for a new checkout':''}</option>}</select></label>
+    {!locked&&capabilities?.paypal?.can_prepare===false&&<small>PayPal: {capabilities.paypal.reasons.join('. ')}. These checks do not authorize a charge.</small>}
     <details className="guardian-expanded"><summary>Payment checks and timeline</summary>
     <div className="guardian-rules"><strong>{paypal ? 'PayPal approval' : 'Why this wallet decision?'}</strong>
       {paypal ? <p>PayPal handles buyer approval and capture. Internal wallet limits do not govern these external funds. Your demo wallet is not debited or reserved.</p> : <>
@@ -107,6 +110,7 @@ export function PaymentGuardian({ paymentId, initialSource, onChanged, onCancel 
     {error && <p role="alert">{error}</p>}
     {uncertain && <p>The last response was interrupted. Any wallet retry uses the same payment key.</p>}
     {paypal && (locked || !expired && !held && allowed) && <PayPalCheckoutPanel paymentId={paymentId} amount={p.amount} onComplete={() => { void load().catch(e => setError(e.message)); onChanged(); }}/>}
+    {review.receipt&&<a className="document-link" href={`/api/product/documents/payments/${paymentId}.pdf`}>Download payment record PDF</a>}
     <div className="preview-actions">
       {!paypal && !done && <button disabled={!allowed || busy} onClick={() => void act()}>{busy ? 'Processing…' : 'Confirm action'}</button>}
       {!locked && !expired && !held && !done && ['PENDING', 'HELD'].includes(p.status) && <button className="secondary" disabled={busy} onClick={() => void act(true)}>Hold payment</button>}

@@ -1,0 +1,15 @@
+import os
+import pytest
+from test_merchants_v2_postgres import factory,configure,client
+from test_prompt_completion import (
+    test_intake_rejects_unsafe_links,test_intake_dedupes_and_never_becomes_executable,
+    test_split_exact_rounding_confirmation_and_replay,test_split_unknown_ambiguous_and_changed_recipient,
+    test_bill_reminder_and_calendar_rollover_are_not_payment,
+    test_upload_validation_catalog_and_private_attachment,
+    test_notification_categories_keep_security_and_bill_consent,
+    test_voice_exact_recipient_with_notes,test_source_eligibility_is_readonly_and_explicit,
+    test_voice_split_and_bill_reminder_only_prepare_reviews,test_voice_subscription_period_is_actually_filtered,
+    test_voice_money_request_prepares_without_saving_or_spending,
+    test_activity_groups_batches_and_does_not_treat_requests_as_received,
+)
+pytestmark=pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'),reason='requires isolated PostgreSQL test database')

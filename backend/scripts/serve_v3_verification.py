@@ -27,4 +27,4 @@ DemoPaymentProvider.execute=uncertain_once
 @app.post('/api/test/reconcile')
 def reconcile():
     tick();return {'worker_tick':True}
-uvicorn.run(app,host='127.0.0.1',port=8198,log_level='error')
+uvicorn.run(app,host='127.0.0.1',port=int(os.environ.get('VERIFICATION_PORT','8198')),log_level='error')

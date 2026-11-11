@@ -124,3 +124,11 @@ Core authenticated merchant-to-wallet journey and V1.1 corrections implemented; 
 ## V3 — 2026-11-10
 
 Stable-ID merchant authority, independent saved-payment memory, non-financial snooze/dismiss/restore, inline Voice Home, conversational corrections, typed uncertainty handling, committed lifecycle logs and secret-free CI implemented. Existing journal/authorization/reservation/PayPal separation remains in place. Measured full backend run: 251 passed, 1 optional adapter skipped; expanded PostgreSQL run: 34 passed. Actual local A/B/C browser journey passed with synthetic STT/uncertainty only. Final affected checks and explicit unexecuted live-provider/physical-device/CI checks: [V3 execution record](docs/V3_IMPLEMENTATION.md). V3 changes remain uncommitted for owner review.
+
+## Consumer product redesign checkpoint
+
+See [docs/CONSUMER_PRODUCT.md](docs/CONSUMER_PRODUCT.md) for the four-tab consumer shell, exact batch results/documents, persistent notification center, Settings, manual planning features, actual test results and explicit incomplete scope. Existing financial execution and PayPal separation are preserved. Changes are local; no push or normal Docker deployment was performed.
+
+## Master prompt second-pass coverage
+
+The complete brief has been reread. See [31-part coverage and execution record](docs/MASTER_PROMPT_COVERAGE.md). Additional runnable intake/QR, split, uploaded-document, recurring-planning, notification and voice workflows now replace several prior omissions. Final local backend result: 282 passed / 96 skipped; isolated PostgreSQL is verified separately. Conditional production integrations and unexecuted physical/live checks are explicitly retained, not marked complete. No push, normal Docker deployment or credential change was performed.

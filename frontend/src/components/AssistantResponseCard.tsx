@@ -28,6 +28,7 @@ export function AssistantResponseCard({
           <small>{money(balance.reserved_amount)} set aside</small>
         </div>
       )}
+      {!a.error&&Array.isArray(a.resultData?.documents)&&<section aria-label="Matching documents">{a.resultData.documents.map((d:{id:string;title:string;status:string;download_url:string})=><p key={d.id}>{d.title} · {d.status} {d.download_url.startsWith('/api/product/')&&<a className="document-link" href={d.download_url}>Download record PDF</a>}</p>)}</section>}
       {a.error && a.canRetry && (
         <button
           className="text-button"

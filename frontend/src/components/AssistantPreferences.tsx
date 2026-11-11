@@ -40,6 +40,7 @@ export function AssistantPreferences({
           checked={a.readReplies}
           onChange={(e) => {
             a.setReadReplies(e.target.checked);
+            localStorage.setItem('wallet-read-replies', e.target.checked?'on':'off');
             if (!e.target.checked) a.stopVoice();
           }}
         />

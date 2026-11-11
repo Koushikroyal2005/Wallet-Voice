@@ -37,7 +37,7 @@ def _resolve_context(text, conversation):
         return Intent('',{},'Financial actions always require your approval in the secure review.')
     if preview.get('kind')=='recipient_transfer' and value in {'pay it','okay pay it','ok pay it','send it','yes send it'}:
         return Intent('review_recipient_draft',{'payment_id':preview.get('intent_id')})
-    if value in {'stop','stop talking','no','not that one','actually not that one'}:
+    if value in {'stop','stop talking','no','not that one','actually not that one','cancel','cancel that transfer','actually cancel that transfer','cancel the transfer','cancel this review','cancel the review'}:
         conversation.selected_payment_id=None
         conversation.context={}
         return Intent('',{},'Stopped. No new payment was made. Which payment would you like to look at?')

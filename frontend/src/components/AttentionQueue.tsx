@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, post } from '../lib/api';
 import { currencyMoney,remainingTime } from '../lib/formatting';
 
-export function AttentionQueue({ onReview }: { onReview: (id: string) => void }) {
+export function AttentionQueue({ onReview, preferencesOnly=false }: { onReview: (id: string) => void; preferencesOnly?: boolean }) {
   const { data, refetch, isPending, isError } = useQuery({ queryKey: ['attention'], queryFn: () => api('/api/notifications') });
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -36,13 +36,14 @@ export function AttentionQueue({ onReview }: { onReview: (id: string) => void })
     finally { setBusy(false); }
   }
   return <section className="attention-queue surface" aria-label="Payment reminders">
-    <div className="section-heading"><div><span className="eyebrow">SAVED FOR YOU</span><h2>Upcoming payments</h2></div><span className="count">{data?.items?.length||0}</span></div>
+    {!preferencesOnly && <><div className="section-heading"><div><span className="eyebrow">SAVED FOR YOU</span><h2>Needs your attention</h2></div><span className="count">{data?.items?.length||0}</span></div>
     {isPending && <p role="status">Loading saved payments…</p>}
     {isError && <p role="alert">Saved payments could not be loaded. <button className="text-button" onClick={() => void refetch()}>Try again</button></p>}
     {!data?.preferences?.enabled && <p>Alerts are off. Your saved payments are still here.</p>}
     {data?.items?.length ? data.items.map((item: any) => <article key={item.id}><div><strong>{item.merchant}</strong><small>{item.stage === 'EXPIRED' ? 'Expired checkout' : item.stage === 'URGENT' ? 'Expiring soon' : item.stage === 'DUE_SOON' ? 'Due soon' : item.stage === 'SAVED_CHECKOUT' ? 'Saved merchant checkout · Simulated' : 'Saved payment'}</small><p>{currencyMoney(item.amount,item.currency)} · <time dateTime={item.deadline||undefined} title={item.deadline?new Date(item.deadline).toLocaleString():undefined}>{item.deadline ? remainingTime(item.deadline) : 'Saved for review'}</time></p>{item.snoozed_until && <small>Reminder paused until {new Date(item.snoozed_until).toLocaleTimeString()}</small>}</div><div className="attention-actions"><button className="secondary" onClick={() => onReview(item.payment_id)}>{item.stage === 'EXPIRED' ? 'View details' : 'Review now'}</button>{item.stage!=='EXPIRED' && !item.explicit_hold && <button className="text-button" onClick={()=>void attentionAction(item.payment_id,'SNOOZE')}>Remind in 5 min</button>}<button className="text-button" onClick={()=>void attentionAction(item.payment_id,'DISMISS')}>Dismiss</button></div></article>) : <p>No saved payments need attention. Your payment history stays in Payments.</p>}
     {!!data?.dismissed_items?.length && <details><summary>Hidden from attention ({data.dismissed_items.length})</summary>{data.dismissed_items.map((item:any)=><p key={item.payment_id}>{item.merchant} <button className="text-button" onClick={()=>void attentionAction(item.payment_id,'RESTORE')}>Restore</button></p>)}</details>}
-    <details><summary>Reminder preferences</summary>
+    </>}
+    {preferencesOnly && <details open><summary>Reminder preferences</summary>
       <label><input type="checkbox" checked={data?.preferences?.enabled ?? true} onChange={async e => {
         try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, enabled: e.target.checked }) }); await refetch(); } catch (error) { setMessage((error as Error).message); }
       }}/> Deadline alerts (saved payments stay visible)</label>
@@ -54,7 +55,7 @@ export function AttentionQueue({ onReview }: { onReview: (id: string) => void })
       <button className="text-button" disabled={!data?.preferences?.push_enabled} onClick={async () => {
         try { await api('/api/notifications/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data.preferences, push_enabled: false }) }); await refetch(); setMessage('Background reminders paused.'); } catch (e) { setMessage((e as Error).message); }
       }}>Pause background reminders</button>
-    </details>
+    </details>}
     {message && <p role="status">{message}</p>}
   </section>;
 }

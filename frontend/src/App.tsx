@@ -13,6 +13,10 @@ import {
   Train,
   Wallet,
   Zap,
+  Bell,
+  UserRound,
+  Send,
+  History,
 } from "lucide-react";
 import { api, post, operationKey, finishOperation } from "./lib/api";
 import { money, currencyMoney,paymentStatus } from "./lib/formatting";
@@ -23,6 +27,11 @@ import { PaymentGuardian } from "./components/PaymentGuardian";
 import { PaymentBatchReview } from "./components/PaymentBatchReview";
 import { AttentionQueue } from "./components/AttentionQueue";
 import { HomeOverview } from "./components/HomeOverview";
+import { AccountsScreen, ActivityScreen, BillsScreen, PayHub, RequestMoney, SettingsScreen, type Destination } from './components/ConsumerScreens';
+import { NotificationCenter, useNotifications } from './components/NotificationCenter';
+import {IntakeFlow,ImportedCheckouts} from './components/PaymentIntake';
+import {SplitMoney} from './components/SplitMoney';
+import {PlanningInsight} from './components/PlanningControls';
 import {
   Drafts,
   Permissions,
@@ -30,7 +39,7 @@ import {
   MerchantDemo,
 } from "./components/Workspace";
 
-type Tab = "home" | "payments" | "wallet" | "permissions" | "merchant";
+type Tab = Destination;
 export type Payment = {
   id: string;
   merchant: string;
@@ -43,16 +52,18 @@ export type Payment = {
   explicit_hold: boolean;
   verified: boolean;
   expires_at?: string;
-  trace?: { urgency?: string };
+  trace?: { urgency?: string; reason_codes?:string[] };
 };
 const tabs = [
   { id: "home", label: "Home", icon: Home },
-  { id: "payments", label: "Payments", icon: Inbox },
-  { id: "wallet", label: "Wallet", icon: Wallet },
-  { id: "permissions", label: "Auto-pay & security", icon: ShieldCheck },
+  { id: "pay", label: "Pay", icon: Send },
+  { id: "payments", label: "Inbox", icon: Inbox },
+  { id: "activity", label: "Activity", icon: History },
 ] as const;
+const secondaryTabs = [{id:'wallet',label:'Wallet',icon:Wallet},{id:'accounts',label:'Accounts & Cards',icon:Wallet},{id:'bills',label:'Bills & Subscriptions',icon:History},{id:'settings',label:'Settings',icon:UserRound},{id:'permissions',label:'Auto-pay & security',icon:ShieldCheck}] as const;
 const openPayment = (p: Payment) =>
   ["PENDING", "HELD", "FAILED"].includes(p.status) &&
+  !p.trace?.reason_codes?.includes('EXPIRED') &&
   (!p.expires_at || new Date(p.expires_at).getTime() > Date.now());
 const due = (p: Payment) =>
   !p.expires_at
@@ -87,7 +98,7 @@ export function App() {
           <span className="brand-mark">
             <AudioLines size={25} />
           </span>
-          aiwallet.
+          Wallet-Voice
         </a>
         <span className="eyebrow">YOUR MONEY. YOUR VOICE.</span>
         <h1>
@@ -172,10 +183,26 @@ export function App() {
 function WalletApp() {
   const query = useQueryClient();
   const [tab, setTab] = useState<Tab>("home");
+  const [notificationsOpen,setNotificationsOpen]=useState(false);
+  const [requestOpen,setRequestOpen]=useState(false);
+  const [intakeMode,setIntakeMode]=useState<'manual'|'link'|'qr'|'share'>();
+  const [sharedURL,setSharedURL]=useState('');
+  const [splitOpen,setSplitOpen]=useState(false);
+  const [recipientRequested,setRecipientRequested]=useState<string>();
+  useEffect(()=>{
+    const intake=(e:Event)=>{const mode=(e as CustomEvent).detail;if(['manual','link','qr','share'].includes(mode))setIntakeMode(mode);};
+    const split=()=>setSplitOpen(true);
+    const recipient=(e:Event)=>{const id=(e as CustomEvent).detail;if(typeof id==='string'){setRecipientRequested(id);setTab('pay');setSendRequested(true);}};
+    const navigate=(e:Event)=>{const id=(e as CustomEvent).detail;if(['home','pay','payments','activity','wallet','accounts','bills','settings'].includes(id))setTab(id);};
+    window.addEventListener('wallet-intake-open',intake);window.addEventListener('wallet-split-open',split);window.addEventListener('wallet-send-recipient',recipient);window.addEventListener('wallet-navigate',navigate);
+    const params=new URLSearchParams(location.search);if(params.has('share_url')||params.has('share_text')){setSharedURL(params.get('share_url')||params.get('share_text')||'');setIntakeMode('share');history.replaceState({},'',location.pathname);}
+    return()=>{window.removeEventListener('wallet-intake-open',intake);window.removeEventListener('wallet-split-open',split);window.removeEventListener('wallet-send-recipient',recipient);window.removeEventListener('wallet-navigate',navigate);};
+  },[]);
+  const notifications=useNotifications();
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [tab]);
   const [assistant, setAssistant] = useState(false);
   const [sendRequested,setSendRequested] = useState(false);
-  const [filter, setFilter] = useState("Open");
+  const [filter, setFilter] = useState("Pending");
   const [search, setSearch] = useState("");
   const [selectedPayments,setSelectedPayments] = useState<string[]>([]);
   const [review, setReview] = useState<{id:string;merchant?:string;payment_source?:string}>();
@@ -287,13 +314,18 @@ function WalletApp() {
     (p) =>
       (filter === "Held"
         ? p.explicit_hold && openPayment(p)
-        : filter === "History"
-          ? !openPayment(p)
+        : filter === 'All' ? ['PENDING','HELD','FAILED','EXPIRED','PROCESSING'].includes(p.status)
+        : filter === 'Expiring' ? openPayment(p)&&['URGENT','DUE_SOON'].includes(p.trace?.urgency||'')
+        : filter === "Expired"
+          ? p.status==='EXPIRED'||!!p.expires_at&&new Date(p.expires_at).getTime()<=Date.now()
           : openPayment(p) && !p.explicit_hold) &&
       `${p.merchant} ${p.description}`
         .toLowerCase()
         .includes(search.toLowerCase()),
-  );
+  ).sort((a,b)=>{
+    const rank=(p:Payment)=>!openPayment(p)?5:p.explicit_hold?4:p.trace?.urgency==='URGENT'?0:p.trace?.urgency==='DUE_SOON'?1:2;
+    return rank(a)-rank(b)||(a.expires_at?new Date(a.expires_at).getTime():Infinity)-(b.expires_at?new Date(b.expires_at).getTime():Infinity)||a.id.localeCompare(b.id);
+  });
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -309,8 +341,8 @@ function WalletApp() {
             <AudioLines size={25} />
           </span>
           <span>
-            aiwallet<span className="brand-dot">.</span>
-            <small className="brand-subtitle">GUARDIAN</small>
+            Wallet-Voice
+            <small className="brand-subtitle">EVERY PAYMENT. ONE CONVERSATION.</small>
           </span>
         </a>
         <span className="nav-caption">YOUR SPACE</span>
@@ -331,6 +363,7 @@ function WalletApp() {
             </button>
           ))}
         </nav>
+        <div className="secondary-navigation"><span className="nav-caption">YOUR MONEY & ACCOUNT</span>{secondaryTabs.map(({id,label,icon:Icon})=><button key={id} className={`nav-item ${tab===id?'active':''}`} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}><Icon size={20}/><span>{label}</span></button>)}</div>
         <div className="sidebar-bottom">
           <div className="mini-assistant">
             <Sparkles size={21} />
@@ -356,11 +389,12 @@ function WalletApp() {
       <main className="content">
         <header className="topbar">
           <span>
-            Personal workspace <span className="divider">/</span>{" "}
+            Wallet-Voice <span className="divider">/</span>{" "}
             {tab === "merchant"
               ? "Merchant demo"
-              : tabs.find((t) => t.id === tab)?.label}
+              : [...tabs,...secondaryTabs].find((t) => t.id === tab)?.label}
           </span>
+          <div className="topbar-actions"><button className="icon-button notification-bell" aria-label={`Notifications${notifications.data?.unread?`, ${notifications.data.unread} unread`:''}`} onClick={()=>setNotificationsOpen(true)}><Bell size={21}/>{!!notifications.data?.unread&&<b>{notifications.data.unread>99?'99+':notifications.data.unread}</b>}</button><button className="icon-button profile-button" aria-label="Open account and Settings" onClick={()=>setTab('settings')}><UserRound size={21}/></button></div>
           <span className="environment">
             <span className="online-dot" />
             Demo funds · PayPal Sandbox
@@ -394,6 +428,7 @@ function WalletApp() {
                   wallet: "Your money.",
                   permissions: "Your controls.",
                   merchant: "Merchant playground.",
+                  pay:'Pay & receive.', activity:'Your activity.', accounts:'Accounts & Cards.', bills:'Bills & subscriptions.', settings:'Your settings.',
                 }[tab]
               }
             </h1>
@@ -409,6 +444,7 @@ function WalletApp() {
                     "Choose who can charge your wallet, and how much.",
                   merchant:
                     "A sample ticket checkout using your saved wallet permission.",
+                  pay:'Pay naturally. Pay together. Stay in control.', activity:'Recorded results, payment records and batch statements.', accounts:'Know where your money comes from.', bills:'Expected expenses, clearly separated from payments.', settings:'Your account, security and preferences.',
                 }[tab]
               }
             </p>
@@ -443,22 +479,16 @@ function WalletApp() {
           urgent={attentionQuery.isPending||attentionQuery.isError?null:attention.filter(p=>p.trace?.urgency==='URGENT').length}
           onSend={()=>{setSendRequested(true);setTab('payments');}}
           onAdd={()=>{setTab('wallet');window.setTimeout(()=>window.dispatchEvent(new Event('wallet-add-money')),0);}}
-          onActivity={()=>setTab('wallet')} onChat={()=>setAssistant(true)}/>}
+          onActivity={()=>setTab('activity')} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select the exact saved requests, then review your batch.');}} onChat={()=>setAssistant(true)}/>}
+        {tab==='pay'&&<><PayHub onSend={()=>setSendRequested(true)} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select payments to prepare an exact review.');}} onBills={()=>setTab('bills')}/><Drafts requested={sendRequested} requestedRecipient={recipientRequested} onRequestHandled={()=>{setSendRequested(false);setRecipientRequested(undefined);}} onChanged={refresh}/></>}
+        {tab==='activity'&&<ActivityScreen onBatch={setExactBatch} onPayment={id=>setReview({id})} onChanged={refresh}/>}
+        {tab==='accounts'&&<AccountsScreen/>}
+        {tab==='bills'&&<BillsScreen onChanged={refresh}/>}
+        {tab==='settings'&&<SettingsScreen onNavigate={setTab} onChanged={refresh} onLock={()=>void action(async()=>{await post('/api/auth/logout');query.clear();},'Wallet locked')}/>}
         {tab === "payments" && (
           <>
             <div className="toolbar">
-              <div className="filter-tabs">
-                {["Open", "Held", "History"].map((value) => (
-                  <button
-                    key={value}
-                    className={filter === value ? "active" : ""}
-                    aria-pressed={filter === value}
-                    onClick={() => setFilter(value)}
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
+              <label className="field">Inbox filter<select aria-label="Inbox filter" value={filter} onChange={e=>setFilter(e.target.value)}>{['All','Pending','Held','Expiring','Expired'].map(value=><option key={value}>{value}</option>)}</select></label>
               <input
                 aria-label="Search payments"
                 placeholder="Search payments…"
@@ -483,6 +513,7 @@ function WalletApp() {
               </button>
             </div>
             <div className="payment-list">{paymentRows(visible)}</div>
+            {!!selectedPayments.length&&<section className="selection-bar" aria-label="Selected payments"><div><strong>{selectedPayments.length} selected</strong><span>{Object.entries(items.filter(p=>selectedPayments.includes(p.id)).reduce<Record<string,number>>((totals,p)=>{const c=p.currency||'INR';totals[c]=(totals[c]||0)+p.amount;return totals;},{})).map(([c,total])=>currencyMoney(total,c)).join(' · ')}</span></div><button disabled={busy} onClick={()=>void action(async()=>{const result=await post('/api/payment-batches',{payment_ids:selectedPayments});setExactBatch(result.id);},'Exact review ready')}>Review selected batch</button><button className="secondary" onClick={()=>setSelectedPayments([])}>Clear selection</button></section>}
             <Drafts requested={sendRequested} onRequestHandled={()=>setSendRequested(false)} onChanged={refresh} />
             <details className="demo-tools">
               <summary>Sample payment requests</summary>
@@ -514,9 +545,14 @@ function WalletApp() {
         )}
         {tab === "permissions" && <Permissions onChanged={refresh} />}
         {tab === "merchant" && <MerchantDemo onChanged={refresh} />}
-        {(tab === 'home' || tab === 'payments') && <AttentionQueue onReview={id => { const payment = items.find(p => p.id === id); setReview(payment||{id});setFailure(''); }}/ >}
+        {tab === 'home' && <><PlanningInsight onReview={()=>{setSelectedPayments(attention.filter(p=>p.trace?.urgency==='URGENT').map(p=>p.id));setTab('payments');}} onBills={()=>setTab('bills')}/><AttentionQueue onReview={id => { const payment = items.find(p => p.id === id); setReview(payment||{id});setFailure(''); }}/ ></>}
+        {tab==='payments'&&<ImportedCheckouts onChanged={refresh}/>}
       </main>
       <FloatingAssistant requested={assistant} onClose={() => setAssistant(false)} onConfirmed={refresh} />
+      {requestOpen&&<RequestMoney onClose={()=>setRequestOpen(false)} onChanged={refresh}/>}
+      {intakeMode&&<IntakeFlow mode={intakeMode} initialURL={sharedURL} onClose={()=>{setIntakeMode(undefined);setSharedURL('');}} onChanged={refresh}/>}
+      {splitOpen&&<SplitMoney onClose={()=>setSplitOpen(false)} onChanged={refresh}/>}
+      {notificationsOpen&&<NotificationCenter onClose={()=>setNotificationsOpen(false)} onPayment={id=>setReview({id})} onBatch={setExactBatch}/>}
       {review && (
         <Dialog
           title={review.merchant||'Payment review'}

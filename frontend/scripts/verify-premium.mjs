@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
+import { navigate } from './navigation.mjs';
 const web = spawn(
   process.execPath,
   [
@@ -253,10 +254,7 @@ try {
     assert.equal(homeBefore.y, homeAfter.y, "Opening voice never moves Home");
     assert.equal(await page.locator("#voice-home-session").count(), 0);
     await capture("voice-listening");
-    await page
-      .getByRole("navigation")
-      .getByRole("button", { name: "Wallet", exact: true })
-      .click();
+    await navigate(page,'Pay');
     assert.ok(await conversation.isVisible(), "Navigation preserves assistant");
     await page
       .getByRole("button", { name: "Stop recording", exact: true })

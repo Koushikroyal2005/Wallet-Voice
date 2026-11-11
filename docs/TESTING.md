@@ -1,5 +1,16 @@
 # Testing
 
+## Master prompt completion pass
+
+Latest local full suite: **282 passed / 96 skipped**, 218.36 seconds. The skips are 95 isolated PostgreSQL cases and one optional Web Push adapter dependency missing in the local Windows interpreter; none are counted as local passes. See [MASTER_PROMPT_COVERAGE.md](MASTER_PROMPT_COVERAGE.md) for the separate PostgreSQL result, all 31 prompt sections, screenshots, exact supported trust boundaries and remaining conditional/partial scope. New `node scripts/verify-completion.mjs` verifies actual isolated intake/splits/uploads plus synthetic QR behavior; it does not use live providers or physical cameras.
+
+Separate final PostgreSQL run: **95 passed, zero skipped/failed**, migrations successful, 307.83 seconds. One upstream test-client deprecation warning. This is independent evidence for the cases skipped without `TEST_DATABASE_URL`, not a reclassification of the local skip count.
+
+## Consumer product verification
+
+See [CONSUMER_PRODUCT.md](CONSUMER_PRODUCT.md) for measured results, test environment and limitations. Final local backend: **259 passed / 73 skipped** (72 PostgreSQL cases run separately; one optional local Web Push dependency missing). Final isolated PostgreSQL: **72 passed, zero skipped/failed**, migrations successful. `node scripts/verify-consumer.mjs` runs six viewport sizes against a fresh, provider-disabled FastAPI/SQLite instance. It tests real simulated batch approval/journals/PDF records; its partial/pending presentation responses remain explicitly browser fixtures. Existing `verify-product`, `verify-voice`, `verify-guardian`, `verify-paypal`, `verify-premium` and `verify-v3` scripts remain available and were run. No normal application database is used.
+
+
 ## Guardian conversation evaluation
 
 See [VOICE_TESTING.md](VOICE_TESTING.md) for the 40-case deterministic/live model dataset, measured failures, microphone lifecycle browser fixtures, isolated PostgreSQL replay test and real-device voice checklist. Live Nemotron inference, context-only follow-ups, demo parsing and synthetic browser audio are reported separately.

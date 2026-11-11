@@ -2,7 +2,11 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import "./design.css";
+import "./tokens.css";
 import "./premium.css";
+import "./consumer.css";
+
+document.documentElement.dataset.theme = localStorage.getItem('wallet-theme') || 'light';
 
 if (isSecureContext && 'serviceWorker' in navigator) {
   void navigator.serviceWorker.register('/sw.js').catch(() => undefined);

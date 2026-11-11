@@ -95,7 +95,9 @@ def deliver_one(factory,sender:NotificationProvider|None=None):
         for subscription in subscriptions:
             if delivered.get(subscription.id):continue
             try:
-                sender(subscription_info=subscription.subscription,data=json.dumps({'title':'A payment needs your attention','body':'Open Wallet-Voice to review it.','payment_id':p.id,'tag':row.id}),vapid_private_key=s.vapid_private_key,vapid_claims={'sub':s.vapid_subject},ttl=min(300,max(1,int((utc(p.expires_at)-now).total_seconds()))),timeout=5)
+                from .planning import prefs as product_prefs
+                private=product_prefs(db)['lock_screen_private']
+                sender(subscription_info=subscription.subscription,data=json.dumps({'title':'A payment needs your attention','body':'Open Wallet-Voice to review it.' if private else f'{p.merchant}: {p.currency} {p.amount/100:.2f} due soon. Review before paying.','payment_id':p.id,'tag':row.id}),vapid_private_key=s.vapid_private_key,vapid_claims={'sub':s.vapid_subject},ttl=min(300,max(1,int((utc(p.expires_at)-now).total_seconds()))),timeout=5)
                 delivered[subscription.id]=True
                 row.delivered_at=now
             except Exception as e:

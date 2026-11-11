@@ -70,7 +70,7 @@ async def assistant_response(db,text,conversation_id,request_id,intent_provider)
     context=dict(row.context or {})
     if intent.tool=='get_payment_details' and intent.args.get('payment_id'):row.selected_payment_id=intent.args['payment_id']
     if preview and preview.get('batch_id'):context['batch_id']=preview['batch_id']
-    if text.strip().lower().rstrip('.!?') in {'cancel','stop','no','cancel this review','cancel the review'}:
+    if text.strip().lower().rstrip('.!?') in {'cancel','stop','no','cancel this review','cancel the review','cancel that transfer','actually cancel that transfer','cancel the transfer'}:
         from .batch_voice import retire
         retire(db,previous_batch_id)
         context.pop('batch_id',None)

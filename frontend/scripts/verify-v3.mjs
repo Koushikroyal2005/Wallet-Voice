@@ -6,6 +6,7 @@ import {mkdtemp,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {resolve,join} from 'node:path';
 import assert from 'node:assert/strict';
+import {navigate} from './navigation.mjs';
 const folder=await mkdtemp(join(tmpdir(),'wallet-v3-'));const rail=randomBytes(32).toString('hex'),food=randomBytes(32).toString('hex');
 const env={...process.env,DATABASE_URL:`sqlite:///${join(folder,'v3-browser-wallet.db').replaceAll('\\','/')}`,REQUIRE_WALLET_LOGIN:'true',WALLET_SESSION_SECRET:'isolated-v3-browser-session-secret-32-characters',DEMO_WALLET_PIN:'123456',NVIDIA_ENABLED:'false',PAYPAL_ENABLED:'false',TEST_DATABASE_URL:'',V3_RAIL_KEY:rail,V3_FOOD_KEY:food};
 const backend=spawn('python',['-m','scripts.serve_v3_verification'],{cwd:resolve('../backend'),env,windowsHide:true,stdio:'ignore'});
@@ -33,14 +34,14 @@ try{
   await attention.locator('article').filter({hasText:'Demo Railway'}).getByRole('button',{name:'Dismiss',exact:true}).click();
   await page.getByText('1 urgent request',{exact:true}).waitFor();
   assert.equal(await attention.locator('article').first().getByText('Demo Kitchen',{exact:true}).count(),1,'Next attention comes from the same authoritative list');
-  await page.getByRole('navigation').getByRole('button',{name:'Payments',exact:true}).click();
+  await navigate(page,'Payments');
   await page.locator('.payment-list').getByText('Demo Railway',{exact:true}).first().waitFor();
   await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
   await attention.getByText('Hidden from attention (1)',{exact:true}).click();
   await attention.getByRole('button',{name:'Restore',exact:true}).click();
   await page.getByText('2 urgent requests',{exact:true}).waitFor();
   await page.screenshot({path:join(output,'forgotten-checkout-390.png')});
-  await page.getByRole('navigation').getByRole('button',{name:'Payments',exact:true}).click();
+  await navigate(page,'Payments');
   await page.getByLabel('Select Demo Railway',{exact:true}).check();await page.getByLabel('Select Demo Kitchen',{exact:true}).check();
   await page.getByRole('button',{name:'Review 2 selected',exact:true}).click();
   await page.getByRole('dialog').getByRole('region',{name:'Exact payment review'}).getByText('Demo Kitchen',{exact:true}).waitFor();
@@ -50,7 +51,7 @@ try{
   await page.screenshot({path:join(output,'floating-listening-390.png')});
   await page.getByRole('button',{name:'Stop recording',exact:true}).click();
   const session=page.getByRole('region',{name:'Wallet conversation'});const review=session.getByRole('region',{name:'Exact payment review'});await review.getByText('Demo Kitchen',{exact:true}).waitFor();
-  await page.getByRole('navigation').getByRole('button',{name:'Wallet',exact:true}).click();
+  await navigate(page,'Pay'); // Primary navigation remains reachable with a compact voice review open.
   await review.getByText('Demo Kitchen',{exact:true}).waitFor();
   await session.getByRole('button',{name:'Chat',exact:true}).click();
   await review.getByText('Demo Kitchen',{exact:true}).waitFor();

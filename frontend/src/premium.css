@@ -1,12 +1,12 @@
 /* Wallet-Voice materials and layout. No external fonts or image dependencies. */
 :root {
-  --ink: #202432;
-  --muted: #69717f;
-  --nav: #252d4c;
-  --accent: #5967bd;
-  --line: #e7e9ee;
-  --canvas: #f6f7fa;
-  --surface: #fff;
+  --ink: var(--color-ink);
+  --muted: var(--color-text-secondary);
+  --nav: var(--color-voice-bg);
+  --accent: var(--color-primary);
+  --line: var(--color-border);
+  --canvas: var(--color-canvas);
+  --surface: var(--color-surface);
   --radius: 18px;
   --shadow-panel: 0 18px 60px #18203912;
   color: var(--ink);

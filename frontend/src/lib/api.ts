@@ -13,6 +13,8 @@ export async function api<T = any>(
     throw new Error(
       typeof data?.detail === "string"
         ? data.detail
+        : Array.isArray(data?.detail) && data.detail.every((entry:unknown)=>!!entry&&typeof (entry as {msg?:unknown}).msg==='string')
+          ? data.detail.map((entry:{msg:string})=>entry.msg).join('. ')
         : "We could not complete that request. Check your connection and try again.",
     );
   return data as T;

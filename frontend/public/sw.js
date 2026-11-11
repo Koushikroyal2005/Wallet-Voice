@@ -4,7 +4,7 @@ self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('push',event=>{
   let data;try{data=event.data.json();}catch{return;}
   event.waitUntil(self.registration.showNotification('A payment needs your attention',{
-    body:'Open Wallet-Voice to review it.',icon:'/wallet-icon.svg',tag:data.tag || 'wallet-attention',
+    body:typeof data.body==='string'?data.body.slice(0,250):'Open Wallet-Voice to review it.',icon:'/wallet-icon.svg',tag:data.tag || 'wallet-attention',
     data:{payment_id:data.payment_id},actions:[{action:'review',title:'Review now'}]
   }));
 });

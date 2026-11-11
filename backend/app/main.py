@@ -26,6 +26,20 @@ from .batch_routes import router as batch_router
 app.include_router(batch_router)
 from .reminders import router as reminder_router
 app.include_router(reminder_router)
+from .product import router as product_router
+app.include_router(product_router)
+from .documents import router as documents_router
+app.include_router(documents_router)
+from .intake import router as intake_router
+from .splits import router as splits_router
+from .document_store import router as upload_router
+app.include_router(intake_router)
+app.include_router(splits_router)
+app.include_router(upload_router)
+from .planning import router as planning_router
+app.include_router(planning_router)
+from .capabilities import router as capability_router
+app.include_router(capability_router)
 app.add_middleware(CORSMiddleware,allow_origins=settings().web_allowed_origins.split(","),allow_methods=["*"],allow_headers=["*"])
 
 @app.middleware('http')
@@ -224,7 +238,7 @@ def approve_challenge(challenge_id:str,data:ChallengeVerify,db:Session=Depends(g
     except AuthorizationError as e:db.commit();raise HTTPException(403,str(e))
 @app.post("/api/security/pin/change")
 def update_pin(data:PinChange,db:Session=Depends(get_db)):
-    try:change_pin(db,data.current_pin,data.new_pin);db.commit();return {"status":"UPDATED"}
+    try:change_pin(db,data.current_pin,data.new_pin);emit(db,'security.pin.changed',{});db.commit();return {"status":"UPDATED"}
     except AuthorizationError as e:db.commit();raise HTTPException(403,str(e))
 @app.post("/api/bank/topups")
 def topup(data:Amount,db:Session=Depends(get_db)):

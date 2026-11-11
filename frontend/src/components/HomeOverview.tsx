@@ -6,6 +6,7 @@ import {
   MessageCircle,
   Plus,
   Wallet,
+  Layers,
 } from "lucide-react";
 import { money } from "../lib/formatting";
 
@@ -17,6 +18,8 @@ export function HomeOverview({
   onAdd,
   onActivity,
   onChat,
+  onRequest,
+  onBatch,
 }: {
   balance: any;
   loading: boolean;
@@ -25,6 +28,8 @@ export function HomeOverview({
   onAdd: () => void;
   onActivity: () => void;
   onChat: () => void;
+  onRequest: () => void;
+  onBatch: () => void;
 }) {
   return (
     <div className="home-overview">
@@ -49,13 +54,17 @@ export function HomeOverview({
             <ArrowUpRight size={21} />
             <span>Send</span>
           </button>
+          <button onClick={onRequest}>
+            <ArrowDownLeft size={21} />
+            <span>Request</span>
+          </button>
           <button onClick={onAdd}>
             <Plus size={21} />
             <span>Add money</span>
           </button>
-          <button onClick={onActivity}>
-            <ArrowDownLeft size={21} />
-            <span>Activity</span>
+          <button onClick={onBatch}>
+            <Layers size={21} />
+            <span>Batch Pay</span>
           </button>
         </div>
       </section>
@@ -71,6 +80,9 @@ export function HomeOverview({
                 : `${urgent} urgent ${urgent === 1 ? "request" : "requests"}`}
             </strong>
             <p>Saved checkouts stay here until you decide.</p>
+            <button className="text-button" onClick={onActivity}>
+              View recorded activity
+            </button>
           </div>
         </section>
         <section className="assistant-invitation">

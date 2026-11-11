@@ -4,6 +4,9 @@ import { PaymentBatchReview } from "./PaymentBatchReview";
 import { WalletPinDialog } from "./WalletPinDialog";
 import { RecipientTransferCard } from "./RecipientTransferCard";
 import { post, operationKey, finishOperation } from "../lib/api";
+import { SplitMoney } from "./SplitMoney";
+import { BillReminderCard } from "./PlanningControls";
+import {RequestMoney} from './ConsumerScreens';
 
 export function AssistantActionCard({
   assistant: a,
@@ -21,7 +24,24 @@ export function AssistantActionCard({
   if (!p) return null;
   return (
     <div className="assistant-action-card">
-      {p.kind === "recipient_transfer" ? (
+      {p.kind==='money_request'?<RequestMoney initial={{payer:p.recipient_name||'',amount:String((p.amount||0)/100),note:typeof p.changes?.note==='string'?p.changes.note:''}} onClose={cancel} onChanged={onChanged}/>:p.kind === "split_requests" ? (
+        <SplitMoney
+          initialAmount={String((p.amount || 0) / 100)}
+          initialPeople={
+            Array.isArray(p.changes?.participants)
+              ? p.changes.participants.join(", ")
+              : "me, "
+          }
+          onClose={cancel}
+          onChanged={onChanged}
+        />
+      ) : p.kind === "bill_reminder" && p.resource_id ? (
+        <BillReminderCard
+          id={p.resource_id}
+          onChanged={onChanged}
+          onClose={cancel}
+        />
+      ) : p.kind === "recipient_transfer" ? (
         <RecipientTransferCard
           draft={p}
           onRecorded={(id) => {

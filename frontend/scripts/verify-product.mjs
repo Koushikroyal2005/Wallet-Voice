@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { guardianFixture } from './guardian-fixture.mjs';
+import { navigate } from './navigation.mjs';
 
 const output = resolve('..', 'artifacts', 'premium-review');
 await mkdir(output, { recursive: true });
@@ -82,7 +83,7 @@ try {
   for (const [width,height] of [[1440,900],[1024,900],[768,1024],[430,932],[390,844]]) {
     await page.setViewportSize({width,height});
     for (const name of ['Home','Payments','Wallet','Auto-pay & security']) {
-      await page.getByRole('navigation').getByRole('button',{name,exact:true}).click();
+      await navigate(page,name);
       await page.waitForTimeout(100);
       await screen(`${name.toLowerCase()}-${width}`);
       if(name==='Auto-pay & security'){
@@ -91,18 +92,18 @@ try {
         await page.getByRole('button',{name:'Auto-pay',exact:true}).click();
       }
     }
-    await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+    await navigate(page,'Home');
     await page.getByRole('button',{name:'Send',exact:true}).click();
     await page.getByLabel('Recipient',{exact:true}).waitFor();
     await screen(`send-money-${width}`);await page.keyboard.press('Escape');
-    await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+    await navigate(page,'Home');
     await page.getByRole('button',{name:'Add money',exact:true}).click();
     await page.getByLabel('Amount in rupees').waitFor();
     await page.getByLabel('Amount in rupees').fill('100');
     await page.getByRole('button',{name:/Review ₹100/}).click();
     await page.getByLabel('Your six-digit wallet PIN').waitFor();
     await screen(`wallet-pin-${width}`);await page.keyboard.press('Escape');
-    await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+    await navigate(page,'Home');
     await page.getByRole('region',{name:'Payment reminders'}).getByRole('button',{name:'Review now',exact:true}).first().click();
     await page.getByRole('region',{name:'Payment Guardian'}).getByText('Indian Railways',{exact:true}).waitFor();
     await page.getByRole('dialog').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
@@ -113,7 +114,7 @@ try {
     await page.keyboard.press('Escape');
   }
   await page.setViewportSize({width:1440,height:1000});
-  await page.getByRole('navigation').getByRole('button',{name:'Wallet',exact:true}).click();
+  await navigate(page,'Wallet');
   await page.getByRole('button',{name:'Add demo money',exact:true}).click();
   await page.getByLabel('Amount in rupees').fill('200');
   await page.getByRole('button',{name:/Review ₹200/}).click();
@@ -121,7 +122,7 @@ try {
   await page.getByRole('button',{name:'Approve',exact:true}).click();
   await page.getByText('New top-up',{exact:true}).waitFor();
   assert.equal(posted,1_020_000);
-  await page.getByRole('navigation').getByRole('button',{name:'Payments',exact:true}).click();
+  await navigate(page,'Payments');
   await page.getByRole('button',{name:'New draft'}).click();
   await page.getByRole('button',{name:'Add a recipient'}).click();
   await page.getByLabel('Name',{exact:true}).fill('Asha');
@@ -134,20 +135,20 @@ try {
   await page.getByText('Asha',{exact:true}).waitFor();
   assert.equal(drafts[0].recipient_id,'asha');
   assert.equal(drafts[0].amount,50000);
-  await page.getByRole('navigation').getByRole('button',{name:'Auto-pay & security',exact:true}).click();
+  await navigate(page,'Auto-pay & security');
   await page.getByRole('button',{name:'Security',exact:true}).click();
   await page.getByRole('button',{name:'Change PIN',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Choose a business',exact:true}).count(),0);
   await page.getByRole('button',{name:'Auto-pay',exact:true}).click();
   await page.getByRole('button',{name:'Choose a business'}).click();
-  await page.getByRole('combobox').selectOption('fixture-rail');
+  await page.getByRole('dialog').getByRole('combobox').selectOption('fixture-rail');
   await page.getByRole('button',{name:'Review checkout approval'}).click();
   await page.getByRole('dialog').getByText('Indian Railways',{exact:true}).waitFor();
   await page.getByRole('dialog').getByText('Maximum in one day',{exact:true}).waitFor();
   await screen('permission-approval');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
-  await page.getByRole('navigation').getByRole('button',{name:'Home',exact:true}).click();
+  await navigate(page,'Home');
   await page.getByRole('button', {name: 'Type instead',exact:true}).click();
   await page.getByLabel('Ask about your wallet or payments').fill('Pay the railway ticket');
   await page.getByRole('button',{name:'Send request'}).click();

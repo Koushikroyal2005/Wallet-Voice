@@ -190,7 +190,7 @@ export function WalletView({
   );
 }
 
-export function Drafts({ onChanged,requested=false,onRequestHandled }: { onChanged: () => void;requested?:boolean;onRequestHandled?:()=>void }) {
+export function Drafts({ onChanged,requested=false,requestedRecipient,onRequestHandled }: { onChanged: () => void;requested?:boolean;requestedRecipient?:string;onRequestHandled?:()=>void }) {
   const drafts = useQuery({
     queryKey: ["drafts"],
     queryFn: () => api<any[]>("/api/payment-intents"),
@@ -210,7 +210,7 @@ export function Drafts({ onChanged,requested=false,onRequestHandled }: { onChang
   const [selected, setSelected] = useState<any>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(()=>{if(requested){setCreating(true);setError('');onRequestHandled?.();}},[requested]);
+  useEffect(()=>{if(requested){setCreating(true);if(requestedRecipient)setForm(f=>({...f,recipient_id:requestedRecipient}));setError('');onRequestHandled?.();}},[requested]);
   const recipient = (id: string) =>
     recipients.data?.find((item) => item.id === id);
   async function run(action: () => Promise<void>) {
@@ -805,6 +805,8 @@ export function Permissions({ onChanged }: { onChanged: () => void }) {
               </label>
             ))}
             <p>Changing your PIN cancels all unused approvals.</p>
+            {pin.confirm && pin.next !== pin.confirm && <p className="error-banner" role="alert">The new PINs do not match. Enter the same six digits in both new PIN fields.</p>}
+            {(!pin.current || pin.current.length !== 6 || pin.next.length !== 6) && <small>Use six digits in each field. Your PIN stays in this secure form, never in chat.</small>}
             {error && (
               <p className="error-banner" role="alert">
                 {error}
