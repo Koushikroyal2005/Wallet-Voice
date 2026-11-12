@@ -19,25 +19,54 @@ export function FloatingAssistant({
   const previousFocus = useRef<HTMLElement | null>(null);
   const surface = useRef<HTMLElement>(null);
   const launcher = useRef<HTMLDivElement>(null);
+  // Moving this stable DOM host preserves React children (including nested PIN
+  // dialogs); changing a conversation portal target would remount them.
+  const [conversationHost] = useState(()=>document.createElement('div'));
+  const [portalHost, setPortalHost] = useState<HTMLElement>(document.body);
+  useEffect(()=>{document.body.appendChild(conversationHost);return()=>conversationHost.remove();},[conversationHost]);
   useEffect(() => {
-    let frame = 0, offset = 0;
+    let frame = 0, disposed = false;
     const update = () => {
       frame = 0;
       const node=launcher.current;if(!node)return;
-      if(active||innerWidth>768||document.querySelector('dialog[open]')){offset=0;node.style.setProperty('--assistant-avoidance','0px');return;}
+      // A native modal makes body siblings inert. Keep the same controller, but
+      // render its companion in the top layer so it remains keyboard reachable.
+      const modal=[...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].filter(el=>el.matches(':modal')).at(-1);
+      setPortalHost(modal||document.body);
+      if(!modal||!conversationHost.contains(modal)) {
+        const parent=modal||document.body;
+        if(conversationHost.parentElement!==parent)parent.appendChild(conversationHost);
+      }
       const box=node.getBoundingClientRect();
-      const baseTop=box.top+offset;
-      const controls=[...document.querySelectorAll<HTMLElement>('main button, main input, main select, main textarea, main a')].map(element=>element.getBoundingClientRect()).filter(rect=>rect.width&&rect.height);
-      const free=(lift:number)=>!controls.some(rect=>rect.left<box.right+8&&rect.right>box.left-8&&rect.top<baseTop-lift+box.height+8&&rect.bottom>baseTop-lift-8);
-      const candidates=Array.from({length:Math.max(1,Math.ceil((baseTop-80)/16))},(_,index)=>index*16);
-      offset=candidates.find(lift=>baseTop-lift>80&&free(lift))??0;
-      node.style.setProperty('--assistant-avoidance',`${offset}px`);
+      const viewport=window.visualViewport;
+      const left=viewport?.offsetLeft||0, top=viewport?.offsetTop||0;
+      const width=viewport?.width||innerWidth,height=viewport?.height||innerHeight;
+      const gap=12,minY=top+gap,maxY=top+height-box.height-(width<=768?88:24);
+      const root=modal||document.body;
+      const controls=[...(root.querySelectorAll<HTMLElement>('button,input,select,textarea,a,summary,strong,b,time,p,small,dt,dd,.payment-amount,.batch-totals,.count,.badge,dialog[open]'))].filter(el=>!el.closest('.guardian-assistant-layer')&&getComputedStyle(el).visibility!=='hidden').map(el=>el.getBoundingClientRect()).filter(r=>r.width&&r.height&&r.bottom>top&&r.top<top+height);
+      // Reserve the complete approval surface, not just its buttons: explanations,
+      // receipts and the PIN must remain unobscured as the details scroll.
+      if(modal&&width>768)controls.push(modal.getBoundingClientRect());
+      if(active&&surface.current)controls.push(surface.current.getBoundingClientRect());
+      const free=(x:number,y:number)=>!controls.some(r=>r.left<x+box.width+gap&&r.right>x-gap&&r.top<y+box.height+gap&&r.bottom>y-gap);
+      const right=left+width-box.width-(width<=768?16:28);
+      const xs=[right,...(modal?[modal.getBoundingClientRect().left-box.width-gap]:[]),
+        ...[...new Set(controls.flatMap(r=>[r.left-box.width-gap,r.right+gap]))].sort((a,b)=>b-a),left+gap];
+      const ys=[maxY,...controls.flatMap(r=>[r.top-box.height-gap,r.bottom+gap]),minY].filter(y=>y>=minY&&y<=maxY).sort((a,b)=>b-a);
+      let point: {x:number;y:number}|undefined;
+      positions: for(const x of xs) {
+        if(x<left+gap||x+box.width>left+width-gap)continue;
+        for(const y of ys)if(free(x,y)){point={x,y};break positions;}
+      }
+      point??={x:right,y:minY};
+      node.style.left=`${point.x}px`;node.style.top=`${point.y}px`;
     };
-    const schedule=()=>{if(!frame)frame=requestAnimationFrame(update);};
-    const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true});
-    window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);schedule();
-    return()=>{observer.disconnect();cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);};
-  },[active]);
+    const schedule=()=>{if(!disposed&&!frame)frame=requestAnimationFrame(update);};
+    const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['open','class']});
+    const resize=new ResizeObserver(schedule);resize.observe(document.documentElement);if(surface.current)resize.observe(surface.current);
+    window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);document.fonts.ready.then(schedule);schedule();
+    return()=>{disposed=true;observer.disconnect();resize.disconnect();cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);};
+  },[active,portalHost,conversationHost]);
   const closeHandler = useRef(onClose);
   closeHandler.current = onClose;
   const assistant = useWalletAssistant({
@@ -185,15 +214,15 @@ export function FloatingAssistant({
           </section>
         </>
       )}
-      <div className="assistant-launcher" ref={launcher}>
+      {createPortal(<div className={`guardian-assistant-layer ${active ? "is-open" : ""} mode-${mode}`}><div className="assistant-launcher" ref={launcher}>
         <AssistantOrb
           state={active ? assistant.state : "IDLE"}
           level={assistant.level}
           label={active ? "Close wallet assistant" : "Open wallet assistant"}
           onClick={() => (active ? close() : open("voice"))}
         />
-      </div>
+      </div></div>,portalHost)}
     </div>,
-    document.body,
+    conversationHost,
   );
 }

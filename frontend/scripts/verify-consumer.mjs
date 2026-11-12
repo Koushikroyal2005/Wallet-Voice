@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import assert from "node:assert/strict";
 import { navigate } from "./navigation.mjs";
+import {assertOrbClear} from './orb-verification.mjs';
 const folder = await mkdtemp(join(tmpdir(), "wallet-consumer-"));
 const env = {
   ...process.env,
@@ -139,6 +140,21 @@ try {
       await navigate(page, name);
       await page.waitForTimeout(100);
       await shot(`${name.toLowerCase()}-${width}`);
+      if(width>=1024) {
+        for(const fraction of [0,.5,1]) {
+          await page.evaluate(f=>window.scrollTo(0,(document.documentElement.scrollHeight-innerHeight)*f),fraction);
+          await assertOrbClear(page,`${name}-${width}-scroll-${fraction}`);
+          await shot(`${name.toLowerCase()}-${width}-scroll-${fraction}`);
+        }
+        await page.evaluate(()=>window.scrollTo(0,0));
+        // Reduced CSS viewport exercises the same responsive reflow as desktop
+        // zoom; physical browser/OS zoom remains a separate manual check.
+        await page.setViewportSize({width:Math.round(width/1.25),height:Math.round(height/1.25)});
+        await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight/2));
+        await assertOrbClear(page,`${name}-${width}-zoom-reflow`);
+        await page.setViewportSize({width,height});
+        await page.evaluate(()=>window.scrollTo(0,0));
+      }
     }
     assert.equal(
       await page
@@ -248,12 +264,35 @@ try {
     .getByRole("dialog")
     .getByRole("region", { name: "Exact payment review" });
   await panel.getByText("CinemaPass", { exact: true }).waitFor();
+  if(process.env.DESKTOP_ONLY) for(const [width,height] of [[1024,900],[1280,800],[1440,900],[1280,640]]) {
+    await page.setViewportSize({width,height});
+    await assertOrbClear(page,`batch-${width}-${height}`);
+    await page.getByRole('button',{name:'Open wallet assistant',exact:true}).focus();
+    assert.equal(await page.getByRole('button',{name:'Open wallet assistant',exact:true}).evaluate(el=>el===document.activeElement),true,'Orb stays keyboard accessible in the native modal');
+    if(width===1280&&height===800) {
+      await page.evaluate(()=>window.dispatchEvent(new CustomEvent('wallet-assistant-open',{detail:'chat'})));
+      await page.getByRole('region',{name:'Wallet conversation'}).waitFor();
+      await page.getByLabel('Ask about your wallet or payments').focus();
+      assert.equal(await page.getByLabel('Ask about your wallet or payments').evaluate(el=>el===document.activeElement),true,'Expanded assistant stays usable without closing the review');
+      await page.getByRole('button',{name:'Close conversation',exact:true}).click();
+      assert.ok(await panel.getByLabel('Six-digit wallet PIN').isVisible(),'Closing assistant preserves exact review');
+    }
+    assert.ok(await panel.getByLabel('Six-digit wallet PIN').isVisible());
+    assert.ok(await panel.locator('.batch-details').evaluate(el=>el.clientHeight>=100),'Payment details must retain a usable scroll area');
+    assert.ok(await panel.getByRole('button',{name:'Approve exact payments',exact:true}).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),'Approval must be visible without scrolling the drawer');
+    await panel.locator('.batch-details').evaluate(el=>el.scrollTop=el.scrollHeight);
+    await assertOrbClear(page,`batch-scrolled-${width}-${height}`);
+    await shot(`batch-pinned-${width}-${height}`);
+    await panel.locator('.batch-details').evaluate(el=>el.scrollTop=0);
+  }
+  await page.setViewportSize(process.env.DESKTOP_ONLY?{width:1280,height:800}:{width:390,height:844});
   await shot("exact-batch-review");
   await panel.getByLabel("Six-digit wallet PIN").fill("000000");
   await panel
     .getByRole("button", { name: "Approve exact payments", exact: true })
     .click();
   await panel.getByRole("alert").waitFor();
+  await shot('batch-invalid-pin');
   // Existing security.updated_at session binding intentionally revokes the session after a failed PIN.
   assert.equal(
     await page.evaluate(async () => (await fetch("/api/wallet")).status),
@@ -287,6 +326,12 @@ try {
     })
     .waitFor();
   await shot("actual-batch-success");
+  if(process.env.DESKTOP_ONLY) for(const [width,height] of [[1024,900],[1280,800],[1440,900]]) {
+    await page.setViewportSize({width,height});
+    await assertOrbClear(page,`success-${width}`);
+    await shot(`batch-success-${width}`);
+  }
+  await page.setViewportSize(process.env.DESKTOP_ONLY?{width:1280,height:800}:{width:390,height:844});
   assert.equal(
     (await call("/api/wallet", null, "GET")).available_balance,
     815000,
@@ -297,6 +342,7 @@ try {
   assert.ok(settled.items.every((i) => i.receipt?.journal_id));
   for (const path of [
     `/api/product/documents/batches/${settled.id}.pdf`,
+    ...settled.items.map(item=>`/api/product/documents/attempts/${item.attempt_id}.pdf`),
     `/api/product/documents/payments/${settled.items[0].id}.pdf`,
   ]) {
     const bytes = await page.evaluate(async (path) => {
@@ -357,6 +403,12 @@ try {
       })
       .waitFor();
     await shot(`fixture-${status.toLowerCase()}`);
+    if(process.env.DESKTOP_ONLY) for(const [width,height] of [[1024,900],[1280,800],[1440,900]]) {
+      await page.setViewportSize({width,height});
+      await assertOrbClear(page,`${status}-${width}`);
+      await shot(`batch-${status.toLowerCase()}-${width}`);
+    }
+    await page.setViewportSize(process.env.DESKTOP_ONLY?{width:1280,height:800}:{width:390,height:844});
     await page.keyboard.press("Escape");
     await page.unroute(`**/api/payment-batches/${settled.id}`);
   }
@@ -439,6 +491,8 @@ try {
         screenshots: output,
         journeys: [
           "four-tab navigation",
+          "visible orb avoids protected actions and information through scrolling and zoom-equivalent reflow",
+          "pinned batch PIN/footer, usable details scroll and keyboard-accessible modal assistant",
           "Home urgent Inbox and state-driven Add Money",
           "notification navigation and dismissal preserve requests",
           "unchanged AutoPay limits and PIN-approved merchant permission revocation",

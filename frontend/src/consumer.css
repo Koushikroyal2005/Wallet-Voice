@@ -1,4 +1,25 @@
 /* Consumer shell and new feature components. Financial state stays server-owned. */
+.assistant-launcher { position: fixed; right: auto; bottom: auto !important; }
+@media (min-width: 769px) {
+  .review-drawer:has(> .batch-review) { display: flex; flex-direction: column; overflow: hidden; height: 100dvh; max-height: 100dvh; }
+  .review-drawer:has(> .batch-review) > .dialog-heading { flex: 0 0 auto; position: static; padding: 8px 0 16px; margin-bottom: 12px; }
+  .review-drawer > .batch-review { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; padding: 0; }
+  .review-drawer > .batch-review .batch-heading { flex: 0 0 auto; display: grid; gap: 8px; }
+  .review-drawer > .batch-review .batch-heading h3 { margin: 0; }
+  .review-drawer > .batch-review .batch-heading .eyebrow { margin: 0; }
+  .review-drawer > .batch-review .batch-review-amount { padding: 4px 0; gap: 4px 16px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .review-drawer > .batch-review .batch-review-amount strong { grid-column: 2; grid-row: 1 / 3; font-size: 32px; }
+  .review-drawer > .batch-review .batch-review-amount p { grid-column: 1; font-size: 12px; }
+  .review-drawer > .batch-review .batch-details { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; scrollbar-gutter: stable; }
+  .review-drawer > .batch-review .batch-approval { flex: 0 0 auto; border-top: 1px solid var(--line); padding-top: 12px; background: var(--surface); display: grid; gap: 8px; }
+  .review-drawer > .batch-review .batch-approval form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 8px 16px; }
+  .review-drawer > .batch-review .batch-approval form p { grid-column: 1 / -1; margin: 0; font-size: 12px; }
+  .review-drawer > .batch-review .batch-approval form label { grid-column: 1; }
+  .review-drawer > .batch-review .batch-approval form input { grid-column: 1; }
+  .review-drawer > .batch-review .batch-approval form button { grid-column: 2; grid-row: 3; min-height: 52px; }
+  .review-drawer > .batch-review .batch-approval .error-banner { margin: 0; }
+  .review-drawer > .batch-review .batch-approval .document-link { margin: 0; }
+}
 .settings-row-group button span { min-width: 0; overflow-wrap: anywhere; }
 .settings-row-group button > svg { flex-shrink: 0; }
 .settings-detail .section-heading { flex-wrap: wrap; }

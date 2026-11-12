@@ -81,6 +81,7 @@ export function PaymentBatchReview({
   }
   return (
     <section className="batch-review" aria-label="Exact payment review">
+      <div className="batch-heading">
       <span className="eyebrow">EXACT WALLET REVIEW · SIMULATED FUNDS</span>
       <h3 ref={heading} tabIndex={-1}>
         {batch?.status === "SUCCEEDED"
@@ -97,10 +98,12 @@ export function PaymentBatchReview({
                     ? "Review cancelled"
                     : "Ready for review"}
       </h3>
+      {batch?.status==='REVIEW'&&<div className="batch-review-amount" id={`batch-amount-${batchId}`}><span>Ready to pay</span><strong>{Object.entries(currencyTotals).map(([currency,total])=>currencyMoney(total,currency)).join(' · ')}</strong><p>{batch.items.length} payments selected · Simulated wallet</p></div>}
+      </div>
+      <div className="batch-details" tabIndex={0} role="region" aria-label="Selected payment details">
       {!batch && <p role="status">Loading the exact server review…</p>}
       {batch && (
         <>
-          {batch.status==='REVIEW'&&<div className="batch-review-amount" id={`batch-amount-${batchId}`}><span>Ready to pay</span><strong>{Object.entries(currencyTotals).map(([currency,total])=>currencyMoney(total,currency)).join(' · ')}</strong><p>{batch.items.length} payments selected · Simulated wallet</p></div>}
           <ol className="batch-progress" aria-label="Batch decision timeline">
             <li>Exact requests selected</li>
             <li>
@@ -295,7 +298,11 @@ export function PaymentBatchReview({
               PIN.
             </p>
           )}
-          {batch.status === "REVIEW" && (
+        </>
+      )}
+      </div>
+      <footer className="batch-approval">
+          {batch?.status === "REVIEW" && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -333,20 +340,18 @@ export function PaymentBatchReview({
               </button>
             </form>
           )}
-          {batch.status === "PROCESSING" && (
+          {batch?.status === "PROCESSING" && (
             <p role="status">
               Waiting for recorded outcomes. Do not start another payment. This
               review refreshes automatically.
             </p>
           )}
-          <a
+          {batch && <a
             className="document-link"
             href={`/api/product/documents/batches/${reviewId}.pdf`}
           >
             Download batch statement PDF
-          </a>
-        </>
-      )}
+          </a>}
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -367,6 +372,7 @@ export function PaymentBatchReview({
       >
         {batch?.status === "REVIEW" ? "Cancel review" : batch && ['SUCCEEDED','PARTIAL','FAILED'].includes(batch.status) ? "Done" : "Close review"}
       </button>
+      </footer>
     </section>
   );
 }
