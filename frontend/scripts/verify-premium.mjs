@@ -29,14 +29,14 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   }
   browser = await chromium.launch({ headless: true });
-  for (const [width, height] of [
+  for (const [width, height] of (process.env.DESKTOP_ONLY ? [[1024,900],[1280,800],[1440,900]] : [
     [360, 800],
     [390, 844],
     [430, 932],
     [768, 1024],
     [1024, 900],
     [1440, 900],
-  ]) {
+  ])) {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.clock.install();
     let deletes = 0;
@@ -397,7 +397,7 @@ try {
     await page.close();
   }
   console.log(
-    "PASSED: premium assistant at 360/390/430/768/1024/1440: stable overlay, measured audio ring, navigation continuity, editable transcript opt-in, thinking and balance cards, shared chat, read-only collapse, persistent approval/error, duplicate approval guard, track cleanup, reduced motion and simulated keyboard viewport. All provider/payment responses in this suite are fixtures.",
+    `PASSED: premium assistant at ${process.env.DESKTOP_ONLY ? '1024/1280/1440' : '360/390/430/768/1024/1440'}: stable overlay, measured audio ring, navigation continuity, editable transcript opt-in, thinking and balance cards, shared chat, read-only collapse, persistent approval/error, duplicate approval guard, track cleanup, reduced motion and simulated keyboard viewport. All provider/payment responses in this suite are fixtures.`,
   );
 } finally {
   await browser?.close();

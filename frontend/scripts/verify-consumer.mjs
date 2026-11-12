@@ -54,7 +54,7 @@ try {
   }
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
-    viewport: { width: 390, height: 844 },
+    viewport: process.env.DESKTOP_ONLY ? { width: 1280, height: 800 } : { width: 390, height: 844 },
     acceptDownloads: true,
   });
   const errors = [];
@@ -86,7 +86,7 @@ try {
   }
   async function shot(name) {
     if (name.startsWith("activity-") || name === "dark-activity")
-      await page.getByRole("heading", { name: "Your Activity", exact: true }).locator("..").locator(".record-row").first().waitFor();
+      await page.getByRole("region", { name: "Recorded activity", exact: true }).locator(".record-row").first().waitFor();
     if (/^inbox-(360|390|430)$/.test(name)) assert.equal(await page.evaluate(()=>{
       const orb=document.querySelector('.assistant-launcher')?.getBoundingClientRect();
       return !!orb&&[...document.querySelectorAll('button.row-action')].some(button=>{const r=button.getBoundingClientRect();return r.width>0&&r.left<orb.right&&r.right>orb.left&&r.top<orb.bottom&&r.bottom>orb.top;});
@@ -117,15 +117,24 @@ try {
   await call("/api/merchant/payment-requests", { type: "railway" });
   await call("/api/merchant/payment-requests", { type: "movie" });
   await page.reload();
-  for (const [width, height] of [
+  for (const [width, height] of (process.env.DESKTOP_ONLY ? [[1024,900],[1280,800],[1440,900]] : [
     [360, 800],
     [390, 844],
     [430, 932],
     [768, 1024],
     [1024, 900],
     [1440, 900],
-  ]) {
+  ])) {
     await page.setViewportSize({ width, height });
+    await navigate(page, 'Home');
+    await page.getByRole('button',{name:'Review pending requests',exact:true}).click();
+    await page.getByLabel('Inbox filter').waitFor();
+    assert.equal(await page.getByLabel('Inbox filter').inputValue(),'Pending');
+    await navigate(page, 'Home');
+    await page.getByRole('button',{name:'Add money',exact:true}).click();
+    await page.getByRole('dialog').waitFor();
+    assert.match(await page.getByRole('dialog').innerText(), /Add|money/);
+    await page.keyboard.press('Escape');
     for (const name of ["Home", "Pay", "Inbox", "Activity"]) {
       await navigate(page, name);
       await page.waitForTimeout(100);
@@ -175,7 +184,7 @@ try {
       await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
     }
   }
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(process.env.DESKTOP_ONLY ? {width:1280,height:800} : { width: 390, height: 844 });
   await navigate(page, "Home");
   await page.getByRole("button", { name: "Request", exact: true }).click();
   await page.getByLabel("Who should pay?").fill("Rahul");
@@ -197,6 +206,24 @@ try {
     (await call("/api/product/notifications", null, "GET")).unread,
     0,
   );
+  const notices = (await call('/api/product/notifications',null,'GET')).items;
+  const reviewNotice = notices.find(n=>n.payment_id);
+  assert.ok(reviewNotice,'Saved requests must generate a review notice');
+  await page.getByRole('button',{name:/^Notifications/}).click();
+  await page.getByRole('dialog',{name:'Notifications'}).getByRole('button',{name:'View details',exact:true}).first().click();
+  await page.getByRole('dialog').waitFor();
+  assert.equal(await page.getByRole('dialog',{name:'Notifications'}).count(),0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:/^Notifications/}).click();
+  const dismissNotice=(await call('/api/product/notifications',null,'GET')).items[0];
+  const dismissRow=page.getByRole('dialog',{name:'Notifications'}).locator(`[data-notice-id="${dismissNotice.id}"]`);
+  const dismissTitle=await dismissRow.locator('strong').innerText();
+  await dismissRow.locator('summary').click();
+  await dismissRow.getByRole('button',{name:'Dismiss notice',exact:true}).click();
+  await page.waitForFunction(title=>![...document.querySelectorAll('.notification-row strong')].some(el=>el.textContent===title),dismissTitle);
+  assert.equal((await call('/api/payments',null,'GET')).filter(p=>p.status==='PENDING').length,2,'Dismissing a notice must not cancel or remove saved requests');
+  await page.keyboard.press('Escape');
+  await navigate(page,'Home');
   await page.getByRole("button", { name: "Type instead", exact: true }).click();
   await page
     .getByLabel("Ask about your wallet or payments")
@@ -352,6 +379,25 @@ try {
   assert.equal((await call('/api/wallet',null,'GET')).available_balance,815000);
   await shot('bills-saved');
   await navigate(page,'Auto-pay & security');
+  await page.getByRole('button',{name:'AutoPay & Permissions',exact:true}).click();
+  await page.getByRole('button',{name:'Change request payment settings',exact:true}).click();
+  const policyBefore=await call('/api/autopay/settings',null,'GET');
+  await page.getByRole('button',{name:'Save rules',exact:true}).click();
+  await page.getByRole('dialog').waitFor({state:'hidden'});
+  assert.deepEqual(await call('/api/autopay/settings',null,'GET'),policyBefore,'Saving unchanged limits must preserve financial policy');
+  await page.getByRole('button',{name:'Choose a business',exact:true}).click();
+  await page.getByRole('dialog').getByRole('combobox').selectOption('demo-railway');
+  for(let step=0;step<3;step++) await page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
+  await page.getByRole('button',{name:'Review checkout approval',exact:true}).click();
+  await page.getByLabel('Your six-digit wallet PIN',{exact:true}).fill('123456');
+  await shot('merchant-pin-approval');
+  await page.getByRole('dialog').getByRole('button',{name:'Approve',exact:true}).click();
+  await page.getByRole('button',{name:'Stop automatic checkout',exact:true}).click();
+  await page.getByText('Revoked',{exact:true}).waitFor();
+  assert.equal((await call('/api/mandates',null,'GET')).find(m=>m.merchant_id==='demo-railway').status,'REVOKED');
+  assert.equal((await call('/api/wallet',null,'GET')).available_balance,815000,'Permission changes must not debit the wallet');
+  await shot('merchant-permission-revoked');
+  await navigate(page,'Auto-pay & security');
   await page.getByRole('button',{name:'Security',exact:true}).click();
   await page.getByRole('button',{name:'Change PIN',exact:true}).click();
   await page.getByLabel('Current PIN',{exact:true}).fill('123456');
@@ -389,10 +435,13 @@ try {
     JSON.stringify(
       {
         status: "passed",
-        viewports: 6,
+        viewports: process.env.DESKTOP_ONLY ? 3 : 6,
         screenshots: output,
         journeys: [
           "four-tab navigation",
+          "Home urgent Inbox and state-driven Add Money",
+          "notification navigation and dismissal preserve requests",
+          "unchanged AutoPay limits and PIN-approved merchant permission revocation",
           "accounts capability labels",
           "notification read persists",
           "request creates no debit",
@@ -413,6 +462,7 @@ try {
     ),
   );
 } catch (e) {
+  if(browser) for(const context of browser.contexts()) for(const failedPage of context.pages()) await failedPage.screenshot({path:join(output,'failure.png')}).catch(()=>{});
   console.error(e);
   throw e;
 } finally {

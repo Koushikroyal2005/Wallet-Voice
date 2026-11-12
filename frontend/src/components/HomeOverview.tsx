@@ -16,7 +16,7 @@ export function HomeOverview({
   urgent,
   onSend,
   onAdd,
-  onActivity,
+  onInbox,
   onChat,
   onRequest,
   onBatch,
@@ -26,7 +26,7 @@ export function HomeOverview({
   urgent: number | null;
   onSend: () => void;
   onAdd: () => void;
-  onActivity: () => void;
+  onInbox: () => void;
   onChat: () => void;
   onRequest: () => void;
   onBatch: () => void;
@@ -80,8 +80,8 @@ export function HomeOverview({
                 : `${urgent} urgent ${urgent === 1 ? "request" : "requests"}`}
             </strong>
             <p>Saved checkouts stay here until you decide.</p>
-            <button className="text-button" onClick={onActivity}>
-              View recorded activity
+            <button className="text-button" onClick={onInbox}>
+              Review pending requests
             </button>
           </div>
         </section>

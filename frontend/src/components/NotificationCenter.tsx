@@ -97,6 +97,7 @@ export function NotificationCenter({
           .map((r) => (
             <article
               key={r.id}
+              data-notice-id={r.id}
               className={`notification-row ${r.read ? "" : "unread"}`}
             >
               <strong>

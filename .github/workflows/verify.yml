@@ -65,3 +65,40 @@ jobs:
             artifacts/prompt-completion/
             artifacts/premium-assistant/
           retention-days: 7
+  desktop:
+    runs-on: ubuntu-latest
+    env:
+      DESKTOP_ONLY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - working-directory: frontend
+        run: npm ci && npm run build && npx playwright install --with-deps chromium
+      - name: Desktop consumer journeys
+        working-directory: frontend
+        run: node scripts/verify-consumer.mjs
+      - name: Desktop completion journeys
+        if: '!cancelled()'
+        working-directory: frontend
+        run: node scripts/verify-completion.mjs
+      - name: Desktop premium assistant
+        if: '!cancelled()'
+        working-directory: frontend
+        run: node scripts/verify-premium.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wallet-voice-desktop-screenshots
+          path: |
+            artifacts/consumer-product/
+            artifacts/prompt-completion/
+            artifacts/premium-assistant/
+          retention-days: 7

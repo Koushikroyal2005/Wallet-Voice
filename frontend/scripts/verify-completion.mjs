@@ -53,7 +53,7 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   }
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const page = await browser.newPage({ viewport: process.env.DESKTOP_ONLY ? {width:1280,height:800} : { width: 390, height: 844 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.addInitScript(() => {
@@ -121,18 +121,18 @@ try {
   await page
     .getByRole("button", { name: "Paste payment link", exact: true })
     .click();
-  for (const [width, height] of [
+  for (const [width, height] of (process.env.DESKTOP_ONLY ? [[1024,900],[1280,800],[1440,900]] : [
     [360, 800],
     [390, 844],
     [430, 932],
     [768, 1024],
     [1024, 900],
     [1440, 900],
-  ]) {
+  ])) {
     await page.setViewportSize({ width, height });
     await shot(`intake-${width}`);
   }
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(process.env.DESKTOP_ONLY ? {width:1280,height:800} : { width: 390, height: 844 });
   await page
     .getByLabel("HTTPS checkout link (optional for manual entry)")
     .fill("https://127.0.0.1/private");
@@ -316,7 +316,7 @@ try {
       {
         status: "passed",
         screenshots: output,
-        intake_viewports: 6,
+        intake_viewports: process.env.DESKTOP_ONLY ? 3 : 6,
         journeys: [
           "unsafe URL rejected",
           "unverified intake cannot execute",

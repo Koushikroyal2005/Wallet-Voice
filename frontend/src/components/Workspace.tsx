@@ -23,9 +23,13 @@ import { ChangePinDialog } from "./ChangePinDialog";
 export function WalletView({
   balance,
   onFund,
+  addRequested = false,
+  onAddHandled,
 }: {
   balance: any;
   onFund: (action: "TOPUP" | "WITHDRAWAL", amount: number) => void;
+  addRequested?: boolean;
+  onAddHandled?: () => void;
 }) {
   const transactions = useQuery({
     queryKey: ["transactions"],
@@ -37,7 +41,7 @@ export function WalletView({
   });
   const [transfer, setTransfer] = useState<"TOPUP" | "WITHDRAWAL">();
   const [amount, setAmount] = useState("");
-  useEffect(()=>{const add=()=>{setAmount('');setTransfer('TOPUP');};window.addEventListener('wallet-add-money',add);return()=>window.removeEventListener('wallet-add-money',add);},[]);
+  useEffect(()=>{if(addRequested){setAmount('');setTransfer('TOPUP');onAddHandled?.();}},[addRequested,onAddHandled]);
   return (
     <>
       <section className="wallet-summary surface">

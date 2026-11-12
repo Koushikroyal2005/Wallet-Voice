@@ -7,12 +7,14 @@ export function Dialog({
   onClose,
   busy = false,
   variant = "modal",
+  className = "",
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   busy?: boolean;
   variant?: "modal" | "drawer" | "popover";
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const latest = useRef({ onClose, busy });
@@ -43,7 +45,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className={`dialog ${variant === "drawer" ? "review-drawer" : variant==='popover'?'notification-popover':''}`}
+      className={`dialog ${variant === "drawer" ? "review-drawer" : variant==='popover'?'notification-popover':''} ${className}`}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();

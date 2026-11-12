@@ -202,6 +202,7 @@ function WalletApp() {
   useEffect(() => { setNotificationsOpen(false); window.scrollTo({ top: 0, behavior: 'instant' }); }, [tab]);
   const [assistant, setAssistant] = useState(false);
   const [sendRequested,setSendRequested] = useState(false);
+  const [addRequested,setAddRequested] = useState(false);
   const [filter, setFilter] = useState("Pending");
   const [search, setSearch] = useState("");
   const [selectedPayments,setSelectedPayments] = useState<string[]>([]);
@@ -478,8 +479,8 @@ function WalletApp() {
         {tab === "home" && <HomeOverview balance={balance.data} loading={balance.isPending}
           urgent={attentionQuery.isPending||attentionQuery.isError?null:attention.filter(p=>p.trace?.urgency==='URGENT').length}
           onSend={()=>{setSendRequested(true);setTab('pay');}}
-          onAdd={()=>{setTab('wallet');window.setTimeout(()=>window.dispatchEvent(new Event('wallet-add-money')),0);}}
-          onActivity={()=>setTab('activity')} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select the exact saved requests, then review your batch.');}} onChat={()=>setAssistant(true)}/>}
+          onAdd={()=>{setAddRequested(true);setTab('wallet');}}
+          onInbox={()=>{setFilter('Pending');setSearch('');setTab('payments');}} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select the exact saved requests, then review your batch.');}} onChat={()=>setAssistant(true)}/>}
         {tab==='pay'&&<><PayHub onSend={()=>setSendRequested(true)} onRequest={()=>setRequestOpen(true)} onBatch={()=>{setTab('payments');setNotice('Select payments to prepare an exact review.');}} onBills={()=>setTab('bills')}/><Drafts requested={sendRequested} requestedRecipient={recipientRequested} onRequestHandled={()=>{setSendRequested(false);setRecipientRequested(undefined);}} onChanged={refresh}/></>}
         {tab==='activity'&&<ActivityScreen onBatch={setExactBatch} onPayment={id=>setReview({id})} onChanged={refresh}/>}
         {tab==='accounts'&&<AccountsScreen/>}
@@ -540,6 +541,8 @@ function WalletApp() {
         {tab === "wallet" && (
           <WalletView
             balance={balance.data}
+            addRequested={addRequested}
+            onAddHandled={()=>setAddRequested(false)}
             onFund={(action, amount) => setFunding({ action, amount })}
           />
         )}

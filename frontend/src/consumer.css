@@ -1,4 +1,29 @@
 /* Consumer shell and new feature components. Financial state stays server-owned. */
+.settings-row-group button span { min-width: 0; overflow-wrap: anywhere; }
+.settings-row-group button > svg { flex-shrink: 0; }
+.settings-detail .section-heading { flex-wrap: wrap; }
+.settings-detail .section-heading > div { min-width: 0; flex: 1 1 220px; }
+.settings-detail .setting-panel { flex-wrap: wrap; }
+.settings-detail .setting-panel > div { min-width: 0; flex: 1 1 240px; }
+.settings-detail .setting-panel > button { max-width: 100%; white-space: normal; }
+.settings-detail .permission-intro { flex-wrap: wrap; }
+.settings-detail .permission-intro > div { min-width: 0; flex: 1 1 220px; }
+.accounts-screen .guardian-details { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); padding: 0; border: 0; }
+.accounts-screen .guardian-details dd { font-size: 18px; font-weight: 600; letter-spacing: normal; }
+.accounts-screen .guardian-details > div:first-child dd { font-size: 28px; }
+.activity-timeline .toolbar { display: flex; justify-content: flex-start; }
+.activity-timeline .toolbar input { flex: 1; max-width: none; min-width: 0; }
+.activity-timeline .record-row { padding-inline: 0; }
+@media (min-width: 769px) {
+  .dialog.intake-dialog { width: min(760px, calc(100vw - 64px)); max-height: calc(100dvh - 64px); }
+  .intake-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+  .intake-form > .field { margin: 0; min-width: 0; }
+  .intake-form > .field:first-child,
+  .intake-form > small,
+  .intake-form > p,
+  .intake-form > button { grid-column: 1 / -1; }
+  .intake-form > button { justify-self: end; }
+}
 .qr-preview {
   width: 100%;
   max-height: 260px;
@@ -661,4 +686,10 @@ button.secondary:hover {
   .outcome-succeeded {
     animation: none;
   }
+}
+@media (min-width: 769px) {
+  .sidebar .brand { font-size: 20px; white-space: nowrap; }
+  .pay-action-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pay-action-grid button { min-width: 0; align-items: flex-start; text-align: left; }
+  .intake-dialog .intake-form { gap: 16px 24px; }
 }

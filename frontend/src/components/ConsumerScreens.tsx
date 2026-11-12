@@ -121,9 +121,9 @@ export function PayHub({
           <ReceiptText />
           Bills & subscriptions<small>Track expected expenses</small>
         </button>
-        <button onClick={onBatch}>
+        <button aria-label="Split a bill" onClick={() => window.dispatchEvent(new Event('wallet-split-open'))}>
           <Layers />
-          Batch Pay<small>Review saved checkouts</small>
+          Split a bill<small>Track demo shares, not charges</small>
         </button>
       </div>
       <div className="button-row">
@@ -156,12 +156,6 @@ export function PayHub({
           }
         >
           Scan QR
-        </button>
-        <button
-          className="secondary"
-          onClick={() => window.dispatchEvent(new Event("wallet-split-open"))}
-        >
-          Split a bill
         </button>
       </div>
       <section className="surface consumer-card">
@@ -341,7 +335,7 @@ export function AccountsScreen() {
     queryFn: () => api<Source[]>("/api/product/sources"),
   });
   return (
-    <section className="consumer-stack">
+    <section className="consumer-stack accounts-screen">
       <section className="surface consumer-card">
         <h2>Wallet-Voice simulated balance</h2>
         {balance.data ? (
@@ -375,7 +369,7 @@ export function AccountsScreen() {
           <button onClick={() => void sources.refetch()}>Retry</button>
         </p>
       ) : Array.isArray(sources.data) ? (
-        sources.data.map((s) => (
+        sources.data.filter(s=>s.id!=='AI_WALLET').map((s) => (
           <article className="surface source-card" key={s.id}>
             <Wallet />
             <div>

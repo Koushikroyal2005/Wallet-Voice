@@ -127,6 +127,7 @@ export function IntakeFlow({
   }
   return (
     <Dialog
+      className="intake-dialog"
       title={mode === "qr" ? "Scan or paste a payment link" : "Save a checkout"}
       busy={busy}
       onClose={() => {
@@ -172,7 +173,7 @@ export function IntakeFlow({
         </>
       ) : (
         <form
-          className="form-stack"
+          className="form-stack intake-form"
           onSubmit={async (e) => {
             e.preventDefault();
             if (busy) return;
